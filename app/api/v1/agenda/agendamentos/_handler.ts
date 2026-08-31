@@ -36,6 +36,8 @@ import { audit } from "@/lib/audit";
 import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
+import { moverLeadParaEtapaDeAgendamento } from "@/lib/leads/appointment-stage-move";
+import { logger } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type SB = SupabaseClient;
@@ -177,6 +179,7 @@ export async function marcarAgendamentoHandler(
     appointmentId: criado.id,
     contactId: input.contact_id ?? null,
     atividade: atividadeDaTransicao(null, transicao),
+    transicao,
     empurrarAoGoogle: precisaEmpurrarAoGoogle(null, transicao),
     fusoDoCompromisso: criado.time_zone,
     nomeDoTipo: tipo.name,
@@ -294,6 +297,7 @@ export async function alterarAgendamentoHandler(
       appointmentId: atual.id as string,
       contactId: (atual.contact_id as string | null) ?? null,
       atividade: atividadeDaTransicao(atual.status as SituacaoAnterior, transicao),
+      transicao,
       empurrarAoGoogle: precisaEmpurrarAoGoogle(atual.status as SituacaoAnterior, transicao),
       fusoDoCompromisso: salvo.time_zone,
       nomeDoTipo: "Agendamento",
@@ -364,6 +368,7 @@ export async function cancelarAgendamentoHandler(
     appointmentId: atual.id as string,
     contactId: (atual.contact_id as string | null) ?? null,
     atividade: atividadeDaTransicao(atual.status as SituacaoAnterior, "cancelled"),
+    transicao: "cancelled",
     empurrarAoGoogle: precisaEmpurrarAoGoogle(atual.status as SituacaoAnterior, "cancelled"),
     fusoDoCompromisso: atual.time_zone as string,
     nomeDoTipo: "Agendamento",
@@ -473,6 +478,7 @@ async function fecharOLaco(
     appointmentId: string;
     contactId: string | null;
     atividade: string | null;
+    transicao: Transicao;
     empurrarAoGoogle: boolean;
     fusoDoCompromisso: string;
     nomeDoTipo: string;
@@ -494,9 +500,29 @@ async function fecharOLaco(
     });
   }
 
-  if (!args.atividade) return;
-
   const leadId = args.contactId ? await leadAtivoDoContato(supabase, ctx, args.contactId) : null;
+
+  // ⚠️ ANTES do early-return de `!args.atividade`. Confirmar um agendamento
+  // pendente é `atividade: null` (nada novo pra timeline — `atividadeDaTransicao`
+  // já contou "foi marcado" quando ele nasceu), mas é EXATAMENTE a transição que
+  // move o card de "Agendamento solicitado" pra "Agendado". Um early-return
+  // antes disto pularia o mirror no caso que mais importa para ele.
+  if (leadId) {
+    await moverLeadParaEtapaDeAgendamento(supabase, {
+      organizationId: ctx.organization_id,
+      leadId,
+      transicao: args.transicao,
+    }).catch((err) => {
+      logger.error("[agenda] mirror de estágio falhou", {
+        lead_id: leadId,
+        organization_id: ctx.organization_id,
+        transicao: args.transicao,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  if (!args.atividade) return;
 
   if (!leadId) {
     if (args.contactId) {
