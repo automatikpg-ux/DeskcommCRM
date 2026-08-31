@@ -162,6 +162,17 @@ describe("worker da ida do Google", () => {
     expect(gravado[linha().id as string]?.google_event_id, "o id do evento tem de sair da linha").toBeNull();
   });
 
+  it("cancelado que NUNCA sincronizou não chama o Google — não há o que apagar lá", async () => {
+    // apagarNoGoogle agora recebe o google_event_id REAL (nunca mais re-deriva
+    // de linha.id — ver addendum em lib/agenda/google/escrita.ts). Sem esse
+    // id, nunca existiu evento no Google pra este agendamento, e chamar apagar
+    // seria uma requisição vazia — na melhor das hipóteses.
+    pendentes = [linha({ status: "cancelled", google_event_id: null })];
+    const r = await rodar();
+    expect(apagarNoGoogle).not.toHaveBeenCalled();
+    expect(r.data.apagados).toBe(1);
+  });
+
   it("erro do Google FICA NA LINHA, não só no log", async () => {
     // Erro que só existe em log é estoque morto: `google_sync_error` é o que a
     // tela pode mostrar para a pessoa entender por que o Google não recebeu.

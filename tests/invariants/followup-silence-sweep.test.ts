@@ -206,6 +206,23 @@ async function seedConversation(org: string, contactId: string, agoMinutes: numb
   return rows[0]!.id;
 }
 
+/** Mesmo que `seedConversation`, mas com `status` explícito — pra provar que uma conversa
+ *  CLOSED/ARCHIVED não conta como silêncio (um humano encerrou; o fluxo não está mais ativo). */
+async function seedConversationComStatus(
+  org: string,
+  contactId: string,
+  agoMinutes: number,
+  status: string,
+): Promise<string> {
+  const sessionId = await seedChannelSession(org);
+  const { rows } = await pool.query<{ id: string }>(
+    `insert into conversations (organization_id, contact_id, channel_session_id, status, is_group, last_inbound_at)
+     values ($1, $2, $3, $4, false, now() - interval '${agoMinutes} minutes') returning id`,
+    [org, contactId, sessionId, status],
+  );
+  return rows[0]!.id;
+}
+
 /** Mesmo que `seedConversation`, mas com `last_inbound_at` EXATO (ISO), não relativo a `now()`
  *  do Postgres — necessário pro teste de boundary exato (evita drift entre `now()` do DB e o
  *  `clock()` injetado no sweep, que roda em JS). */
@@ -402,6 +419,46 @@ describe("runSilenceSweep — redução anti-spam (multi-conversa + never-inboun
     expect(summary.pointers_gated_out).toBe(0); // não foi o gate que bloqueou
     expect(summary.enrolled).toBe(0); // a redução MAX(last_inbound_at) pegou a conversa recente, não a velha
     expect(await countEnrollments(pointerId, contactId)).toBe(0);
+  });
+
+  it("única conversa está CLOSED (humano encerrou) e silenciosa há mais que o threshold → NÃO enrolla", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const { pointerId } = await seedSilenceFlow(org, { thresholdMinutes: 60 });
+    await seedPublishedAgentVersion(org, { enabled: true, pointerIds: [pointerId] });
+    const contactId = await seedContact(org);
+    await seedConversationComStatus(org, contactId, 120, "closed");
+
+    const summary = await runSilenceSweep({ db: silenceSweepDb(), gateDb: pgGateDb(), clock: CLOCK });
+    expect(summary.enrolled).toBe(0);
+    expect(await countEnrollments(pointerId, contactId)).toBe(0);
+  });
+
+  it("única conversa está ARCHIVED e silenciosa há mais que o threshold → NÃO enrolla", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const { pointerId } = await seedSilenceFlow(org, { thresholdMinutes: 60 });
+    await seedPublishedAgentVersion(org, { enabled: true, pointerIds: [pointerId] });
+    const contactId = await seedContact(org);
+    await seedConversationComStatus(org, contactId, 120, "archived");
+
+    const summary = await runSilenceSweep({ db: silenceSweepDb(), gateDb: pgGateDb(), clock: CLOCK });
+    expect(summary.enrolled).toBe(0);
+    expect(await countEnrollments(pointerId, contactId)).toBe(0);
+  });
+
+  it("conversa CLOSED antiga + conversa OPEN silenciosa (> threshold) do mesmo contato → enrolla pela ABERTA", async () => {
+    const org = nextOrgId();
+    await seedOrg(org);
+    const { pointerId } = await seedSilenceFlow(org, { thresholdMinutes: 60 });
+    await seedPublishedAgentVersion(org, { enabled: true, pointerIds: [pointerId] });
+    const contactId = await seedContact(org);
+    await seedConversationComStatus(org, contactId, 200, "closed"); // ignorada — não é a que decide
+    await seedConversation(org, contactId, 90); // aberta, silenciosa > threshold
+
+    const summary = await runSilenceSweep({ db: silenceSweepDb(), gateDb: pgGateDb(), clock: CLOCK });
+    expect(summary.enrolled).toBe(1);
+    expect(await countEnrollments(pointerId, contactId)).toBe(1);
   });
 
   it("contato cuja ÚNICA conversa nunca recebeu inbound (last_inbound_at NULL) → NÃO enrolla", async () => {

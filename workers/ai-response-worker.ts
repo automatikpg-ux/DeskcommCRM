@@ -114,6 +114,10 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
       reason: "requested_human",
       leadId,
       metadata: { message_id: ctx.message_id, source: "g1_regex" },
+      // Deixa `moverLeadParaEtapaDeHandoff` casar o pedido contra
+      // `crm_stages.handoff_keywords` (migration 0203) — ex.: "fala com o
+      // Fernando" roteia direto para a etapa dele, não para o balde genérico.
+      sinal: ctx.inbound_body,
     });
     return { status: "skipped", reason: "handoff_g1_requested_human" };
   }

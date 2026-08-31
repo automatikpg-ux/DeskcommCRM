@@ -49,12 +49,38 @@
  * temos `google_event_id` guardado — quem já foi publicado vai direto de PUT, e
  * não depende de uma colisão ser detectada para não duplicar.
  *
- * O id do Google aceita apenas [a-v0-9] e no mínimo 5 caracteres, então o uuid
- * do agendamento é normalizado: hífens fora e dígitos w–z remapeados. É função
- * pura e testável, e o teste mede a INVERSA (dois ids diferentes nunca colidem).
+ * O id do Google aceita apenas [a-v0-9] e no mínimo 5 caracteres — mas ver o
+ * addendum abaixo: aceitar no FORMATO não é aceitar na PRÁTICA, em toda conta.
+ *
+ * ═══ ADDENDUM — id customizado NÃO é universal, e custou a ida DE NOVO ═══
+ *
+ * ⚠️ O PARÁGRAFO ACIMA TAMBÉM ESTAVA INCOMPLETO. Medido numa conta Gmail
+ * pessoal (não-Workspace) real: `events.insert` com `id` no corpo — no formato
+ * certo, `[a-v0-9]{5,1024}`, testado com 3 valores diferentes, um deles de 5
+ * caracteres — devolve **400 "Invalid resource id value."** sempre. Remover o
+ * `id` do corpo (deixando o Google atribuir) e mandar o MESMO resto do
+ * payload funciona na hora, 200.
+ *
+ * A doc de `events.insert` documenta o campo `id` como aceito, e é verdade —
+ * só não garante que toda conta o honre. Contas Workspace historicamente têm
+ * suporte mais consistente a id customizado que contas Gmail pessoais; esta
+ * instalação usa uma conta pessoal.
+ *
+ * Então o id customizado sai de vez, e com ele a lógica de detectar 409 e
+ * cair para PUT (não há mais id nosso para colidir). A idempotência que
+ * aquele mecanismo dava — evitar duplicata quando o Google cria o evento mas
+ * a escrita do `google_event_id` aqui falha antes de terminar — passa a vir
+ * de buscar por `iCalUID` (que É determinístico, gerado por nós, e sobrevive
+ * ao crash) antes de decidir POST vs PUT.
+ *
+ * E o DELETE, que reconstruía o mesmo id derivado, agora recebe o
+ * `google_event_id` REAL guardado na linha — sem id customizado no Google, o
+ * id derivado nunca correspondeu a nada de verdade lá, e um DELETE nele
+ * devolveria 404 (lido como "já está feito") enquanto o evento real ficava
+ * órfão na agenda pessoal de quem atende.
  */
 import { classificarErroDoGoogle, type ClassificacaoDoErro } from "./erros";
-import { paraEventoDoGoogle, SUFIXO_ICAL_UID, type AgendamentoParaGoogle } from "./evento";
+import { paraEventoDoGoogle, type AgendamentoParaGoogle } from "./evento";
 
 const ENDERECO_DE_EVENTOS = "https://www.googleapis.com/calendar/v3/calendars";
 const PRAZO_MS = 15_000;
@@ -62,34 +88,6 @@ const PRAZO_MS = 15_000;
 export type EscritaNoGoogle =
   | { ok: true; eventoId: string; sequence: number | null }
   | { ok: false; classificacao: ClassificacaoDoErro; detalhe: string };
-
-/**
- * O id do evento no Google, derivado do id do agendamento.
- *
- * O Google exige [a-v0-9]{5,1024}. Um uuid tem hífens e pode ter w–z? Não: hex
- * vai só até `f`. Então basta remover os hífens — mas o prefixo existe para que
- * o id seja RECONHECÍVEL como nosso ao olhar a agenda do cliente, e para não
- * colidir com id de outro sistema que também derive de uuid.
- */
-export function idDeEventoDoGoogle(idDoAgendamento: string): string {
-  const limpo = idDoAgendamento.toLowerCase().replace(/[^a-v0-9]/g, "");
-  return `${PREFIXO}${limpo}`;
-}
-
-/**
- * O prefixo sai do MESMO lugar que a identidade iCal, e não de um literal aqui.
- *
- * ⚠️ Eu tinha escrito `deskcomm` cravado, e `tests/unit/branding.test.ts`
- * reprovou — corretamente: numa instalação de marca própria, um literal de marca
- * no código é vazamento. Mas a saída NÃO é resolver por `branding()`: o cabeçalho
- * de `SUFIXO_ICAL_UID` já mediu por quê — se a identidade saísse da marca
- * resolvida, todo evento criado ANTES de uma troca de marca deixaria de ser
- * reconhecido, e o sintoma seria compromisso fantasma ocupando horário, sem erro
- * nenhum.
- *
- * Então a identidade é fixa do PRODUTO, e existe uma fonte só para ela.
- */
-const PREFIXO = SUFIXO_ICAL_UID.toLowerCase().replace(/[^a-v0-9]/g, "");
 
 async function chamar(
   metodo: "POST" | "PUT" | "DELETE",
@@ -117,19 +115,55 @@ async function chamar(
 }
 
 /**
- * Cria OU atualiza o evento — agora com o verbo certo para cada caso.
+ * Procura um evento já existente pelo `iCalUID` — a rede de segurança contra
+ * duplicata que o id customizado dava (ver addendum no cabeçalho do arquivo).
+ * Cobre o caso em que uma publicação anterior criou o evento no Google mas a
+ * gravação do `google_event_id` na nossa linha não completou: sem isto, a
+ * próxima rodada criaria um SEGUNDO evento, porque não há mais id nosso para
+ * o Google detectar como duplicata na criação.
+ *
+ * Falha na BUSCA nunca bloqueia a escrita — `null` só significa "não achei ou
+ * não consegui perguntar", e o chamador segue para POST. Pior caso de uma
+ * busca que falhou é uma duplicata rara; travar a sincronização por causa da
+ * proteção contra duplicata é pior que o problema que ela evita.
+ */
+async function buscarPorICalUID(
+  accessToken: string,
+  calendarId: string,
+  icalUid: string,
+): Promise<string | null> {
+  const url = `${ENDERECO_DE_EVENTOS}/${encodeURIComponent(calendarId)}/events?iCalUID=${encodeURIComponent(icalUid)}`;
+  try {
+    const resposta = await fetch(url, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(PRAZO_MS),
+      cache: "no-store",
+    });
+    if (!resposta.ok) return null;
+    const corpo = (await resposta.json().catch(() => ({}))) as {
+      items?: Array<{ id?: string; status?: string }>;
+    };
+    const encontrado = (corpo.items ?? []).find(
+      (e) => typeof e.id === "string" && e.id && e.status !== "cancelled",
+    );
+    return encontrado?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cria OU atualiza o evento — com o verbo certo para cada caso.
  *
  * `googleEventId` é o que o chamador JÁ tem guardado na linha
- * (`calendar_appointments.google_event_id`). Ele é a única resposta confiável
- * para "isto já existe lá?", e é por isso que ele entra na assinatura em vez de
- * ser adivinhado: a doc do Google não garante que uma colisão de id seja
- * detectada na criação, então depender do 409 para não duplicar seria apostar
- * num comportamento que a própria doc recusa prometer.
+ * (`calendar_appointments.google_event_id`). Sem ele, busca por `iCalUID`
+ * antes de criar (ver `buscarPorICalUID`) — só cai para POST se nem isso achar
+ * nada.
  *
- *   sem `googleEventId`  → POST (cria, com o id derivado no corpo)
- *   com `googleEventId`  → PUT  (atualiza o que já está lá)
- *   POST devolvendo 409  → o id já existe: cai para PUT (é a ação que a doc
- *                          sugere para `duplicate`)
+ *   `googleEventId` guardado, ou achado por iCalUID → PUT (atualiza)
+ *   nenhum dos dois                                  → POST (cria; sem `id`
+ *                                                       no corpo — ver
+ *                                                       addendum no cabeçalho)
  */
 export async function publicarNoGoogle(
   accessToken: string,
@@ -137,48 +171,26 @@ export async function publicarNoGoogle(
   agendamento: AgendamentoParaGoogle,
   googleEventId?: string | null,
 ): Promise<EscritaNoGoogle> {
-  const eventoId = idDeEventoDoGoogle(agendamento.id);
   const corpoDoEvento = paraEventoDoGoogle(agendamento);
 
-  /** Uma tentativa, já com a classificação do erro que ela produziu. */
-  async function tentar(
-    metodo: "POST" | "PUT",
-  ): Promise<{ resposta: Response } | EscritaNoGoogle> {
-    try {
-      const resposta = await chamar(
-        metodo,
-        accessToken,
-        calendarId,
-        // POST manda o id NO CORPO, não na URL — é assim que `events.insert`
-        // aceita id de quem cria.
-        metodo === "POST" ? null : eventoId,
-        metodo === "POST" ? { ...corpoDoEvento, id: eventoId } : corpoDoEvento,
-      );
-      return { resposta };
-    } catch (erro) {
-      return {
-        ok: false,
-        classificacao: classificarErroDoGoogle(erro, "sincronizar"),
-        detalhe: erro instanceof Error ? erro.message : String(erro),
-      };
-    }
+  let eventoId =
+    typeof googleEventId === "string" && googleEventId.length > 0 ? googleEventId : null;
+  if (eventoId === null) {
+    eventoId = await buscarPorICalUID(accessToken, calendarId, corpoDoEvento.iCalUID);
+  }
+  const jaExisteLa = eventoId !== null;
+
+  let resposta: Response;
+  try {
+    resposta = await chamar(jaExisteLa ? "PUT" : "POST", accessToken, calendarId, eventoId, corpoDoEvento);
+  } catch (erro) {
+    return {
+      ok: false,
+      classificacao: classificarErroDoGoogle(erro, "sincronizar"),
+      detalhe: erro instanceof Error ? erro.message : String(erro),
+    };
   }
 
-  // Já publicado uma vez? Atualiza. Nunca publicado? Cria.
-  const jaExisteLa = typeof googleEventId === "string" && googleEventId.length > 0;
-  let primeira = await tentar(jaExisteLa ? "PUT" : "POST");
-  if (!("resposta" in primeira)) return primeira;
-
-  // 409 na criação significa que o id derivado já está no calendário — o evento
-  // existe e o que falta é atualizá-lo. A doc do `duplicate` manda exatamente
-  // isto: "use the events.update method".
-  if (primeira.resposta.status === 409 && !jaExisteLa) {
-    const segunda = await tentar("PUT");
-    if (!("resposta" in segunda)) return segunda;
-    primeira = segunda;
-  }
-
-  const resposta = primeira.resposta;
   if (!resposta.ok) {
     const cru = await resposta.json().catch(() => ({ status: resposta.status }));
     return {
@@ -193,9 +205,19 @@ export async function publicarNoGoogle(
     };
   }
   const corpo = (await resposta.json().catch(() => ({}))) as { id?: string; sequence?: number };
+  if (typeof corpo.id !== "string" || !corpo.id) {
+    // 2xx sem id no corpo não deveria acontecer — mas sem id customizado não
+    // há mais um derivado para cair como fallback, então isto é erro, não
+    // resposta parcial silenciosa.
+    return {
+      ok: false,
+      classificacao: classificarErroDoGoogle({ status: resposta.status }, jaExisteLa ? "sincronizar" : "criar"),
+      detalhe: "resposta 2xx do Google sem id do evento",
+    };
+  }
   return {
     ok: true,
-    eventoId: typeof corpo.id === "string" && corpo.id ? corpo.id : eventoId,
+    eventoId: corpo.id,
     sequence: typeof corpo.sequence === "number" ? corpo.sequence : null,
   };
 }
@@ -203,6 +225,14 @@ export async function publicarNoGoogle(
 /**
  * Apaga o evento lá. Cancelar aqui tem de sumir de lá — senão o horário segue
  * bloqueado na agenda pessoal de quem atende, e o efeito é o oposto do pedido.
+ *
+ * `eventoId` é o `google_event_id` REAL guardado na linha — nunca re-derivado
+ * do id do agendamento (ver addendum no cabeçalho do arquivo). Sem id
+ * customizado no Google, um id re-derivado não corresponde a nada de
+ * verdade lá: o DELETE devolveria 404, seria lido como "já está feito", e o
+ * evento real ficaria órfão na agenda da pessoa. Quem chama sem
+ * `google_event_id` nenhum (nunca chegou a sincronizar) não tem o que apagar
+ * no Google — nem deveria chamar esta função.
  *
  * ⚠️ 404 e 410 são SUCESSO. O evento não existe mais: é exatamente o estado que
  * se queria. Tratá-los como erro faria o worker reencher a Central de avisos com
@@ -212,9 +242,8 @@ export async function publicarNoGoogle(
 export async function apagarNoGoogle(
   accessToken: string,
   calendarId: string,
-  idDoAgendamento: string,
+  eventoId: string,
 ): Promise<EscritaNoGoogle> {
-  const eventoId = idDeEventoDoGoogle(idDoAgendamento);
   let resposta: Response;
   try {
     resposta = await chamar("DELETE", accessToken, calendarId, eventoId);

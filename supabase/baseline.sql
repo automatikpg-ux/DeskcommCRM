@@ -17004,6 +17004,20 @@ revoke execute on function public.fn_conversation_assign(uuid, uuid, uuid, text,
 grant  execute on function public.fn_conversation_assign(uuid, uuid, uuid, text, uuid, boolean)
   to authenticated, service_role;
 
+-- ---- handoff automático por pessoa/tipo de pedido (migration 0203) ----
+--
+-- Ver o cabeçalho da migration 0203 para o racional completo. `handoff_keywords`
+-- por etapa é o que permite `lib/leads/handoff-stage-move.ts:resolveEtapaDeHandoff`
+-- escolher uma etapa ESPECÍFICA (ex.: "Repassado para o Fernando") em vez do
+-- destino genérico (slug=chamar-humano) quando o sinal que disparou o handoff
+-- menciona a palavra configurada. Aditivo e opt-in: etapa sem palavra nenhuma
+-- (a imensa maioria, em todo clone existente) não muda de comportamento.
+alter table public.crm_stages
+  add column if not exists handoff_keywords text[] not null default '{}';
+
+comment on column public.crm_stages.handoff_keywords is
+  'Palavras-chave (substring, case-insensitive) que, ao aparecer no sinal que disparou um handoff, roteiam o lead DIRETO para esta etapa em vez do destino genérico (slug=chamar-humano). Vazio (padrão) = etapa não participa do roteamento por pessoa. Resolvido por lib/leads/handoff-stage-move.ts:resolveEtapaDeHandoff.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
