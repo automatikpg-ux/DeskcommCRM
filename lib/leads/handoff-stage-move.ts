@@ -38,6 +38,54 @@ export interface ResultadoDoMovimentoDeHandoff {
     | "indisponivel";
 }
 
+/** O que o resolvedor precisa saber de cada etapa candidata do pipeline. */
+export interface EstagioCandidatoDeHandoff {
+  id: string;
+  name: string;
+  slug: string | null;
+  handoff_keywords: string[] | null;
+  is_archived: boolean;
+}
+
+/**
+ * Escolhe a etapa de destino de um handoff (migration 0203).
+ *
+ * ⚠️ POR PESSOA VENCE O GENÉRICO. Quando `sinal` (o texto que disparou o
+ * handoff — a mensagem do lead, ou a promessa do agente) contém uma palavra
+ * que uma etapa reivindica em `handoff_keywords`, o card vai DIRETO para ela
+ * — nunca para `chamar-humano`. Isso é o que falta hoje: o tenant já nomeia a
+ * pessoa no funil ("Repassado para o Fernando") e já tem a palavra na lista
+ * do AGENTE (`ai_agent_versions.handoff_keywords`, que decide SE escala) —
+ * mas nada decidia PARA ONDE, então tudo caía no balde genérico.
+ *
+ * Sem `sinal`, ou sem etapa nenhuma reivindicando as palavras do sinal, o
+ * comportamento é o de sempre: cai para a etapa `slug=chamar-humano`, se
+ * existir. NÃO trata ambiguidade entre duas etapas reivindicando a mesma
+ * palavra — mesmo raciocínio de `resolveDestinoDoAgente` em
+ * `agent-stage-sync.ts`: a recusa mora na CONFIGURAÇÃO (quem cadastra vê as
+ * palavras já em uso), não no runtime.
+ */
+export function resolveEtapaDeHandoff(
+  estagios: readonly EstagioCandidatoDeHandoff[],
+  sinal: string | null | undefined,
+): { id: string; name: string } | null {
+  const ativas = estagios.filter((e) => !e.is_archived);
+
+  const sinalNormalizado = (sinal ?? "").toLowerCase().trim();
+  if (sinalNormalizado !== "") {
+    const porPessoa = ativas.find((e) =>
+      (e.handoff_keywords ?? []).some((palavra) => {
+        const p = palavra.toLowerCase().trim();
+        return p !== "" && sinalNormalizado.includes(p);
+      }),
+    );
+    if (porPessoa) return { id: porPessoa.id, name: porPessoa.name };
+  }
+
+  const generica = ativas.find((e) => e.slug === SLUG_ETAPA_HANDOFF);
+  return generica ? { id: generica.id, name: generica.name } : null;
+}
+
 export async function moverLeadParaEtapaDeHandoff(
   admin: SupabaseClient,
   input: {
@@ -45,6 +93,13 @@ export async function moverLeadParaEtapaDeHandoff(
     leadId: string;
     /** `HandoffReason` de `lib/ai/handoff/orchestrator.ts` — string aqui para não acoplar os dois módulos. */
     reason: string;
+    /**
+     * O texto que disparou o handoff (mensagem do lead, ou a promessa do
+     * agente) — usado só para casar contra `handoff_keywords` das etapas
+     * (ver `resolveEtapaDeHandoff`). Ausente = comportamento de sempre
+     * (destino genérico `chamar-humano`).
+     */
+    sinal?: string | null;
   },
 ): Promise<ResultadoDoMovimentoDeHandoff> {
   const { data: lead, error: erroLead } = await admin
@@ -78,13 +133,13 @@ export async function moverLeadParaEtapaDeHandoff(
     return { moveu: false, motivo: "lead_fechado" };
   }
 
-  const { data: etapa, error: erroEtapa } = await admin
+  // Traz TODAS as etapas ativas do pipeline (não só a genérica): o resolvedor
+  // precisa ver quem reivindica palavra própria antes de cair no genérico.
+  const { data: estagios, error: erroEtapa } = await admin
     .from("crm_stages")
-    .select("id, name")
+    .select("id, name, slug, handoff_keywords, is_archived")
     .eq("pipeline_id", leadRow.pipeline_id)
-    .eq("slug", SLUG_ETAPA_HANDOFF)
-    .eq("is_archived", false)
-    .maybeSingle();
+    .eq("is_archived", false);
   if (erroEtapa) {
     logger.warn("[handoff-stage-move] leitura da etapa de handoff falhou", {
       lead_id: leadRow.id,
@@ -93,10 +148,10 @@ export async function moverLeadParaEtapaDeHandoff(
     });
     return { moveu: false, motivo: "indisponivel" };
   }
-  if (!etapa) {
+  const etapaRow = resolveEtapaDeHandoff((estagios ?? []) as EstagioCandidatoDeHandoff[], input.sinal);
+  if (!etapaRow) {
     return { moveu: false, motivo: "sem_etapa_de_handoff" };
   }
-  const etapaRow = etapa as { id: string; name: string };
 
   if (leadRow.stage_id === etapaRow.id) {
     return { moveu: false, motivo: "ja_esta_la" };

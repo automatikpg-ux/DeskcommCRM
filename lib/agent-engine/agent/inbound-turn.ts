@@ -1531,6 +1531,22 @@ async function executarTurnoDoAgente(
         log: runLog,
       },
     );
+    // Best-effort, mesmo padrão de `moverParaHandoffBestEffort` mais abaixo
+    // (definida depois deste ponto no arquivo — por isso a chamada direta
+    // aqui, não a closure): move o card para a etapa `chamar-humano` do
+    // pipeline, OU para a etapa que reivindicou a palavra do pedido (ex.:
+    // "fernando" → "Repassado para o Fernando"), se o tenant tiver criado uma
+    // (migration 0203). Nunca bloqueia nem derruba o handoff em si.
+    moverLeadParaEtapaDeHandoff(createAdminClient(), {
+      organizationId: tenantId,
+      leadId,
+      reason: 'requested_human',
+      sinal: inboundSignal,
+    }).catch((err) => {
+      runLog.warn('moverLeadParaEtapaDeHandoff falhou (best-effort, pedido explícito)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     runLog.info('handoff humano acionado por pedido explícito do lead (detecção determinística)', {
       kind: job.kind,
       lead_avisado: aviso.avisado,

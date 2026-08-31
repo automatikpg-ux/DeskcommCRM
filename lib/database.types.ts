@@ -3379,6 +3379,7 @@ export type Database = {
           created_at: string
           description: string | null
           expected_duration_hours: number | null
+          handoff_keywords: string[]
           id: string
           is_archived: boolean
           is_lost: boolean
@@ -3399,6 +3400,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           expected_duration_hours?: number | null
+          handoff_keywords?: string[]
           id?: string
           is_archived?: boolean
           is_lost?: boolean
@@ -3419,6 +3421,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           expected_duration_hours?: number | null
+          handoff_keywords?: string[]
           id?: string
           is_archived?: boolean
           is_lost?: boolean

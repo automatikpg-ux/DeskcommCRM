@@ -54,6 +54,14 @@ export interface TriggerHandoffInput {
   reason: HandoffReason;
   leadId?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * O texto que disparou o handoff (corpo da mensagem do lead) — repassado a
+   * `moverLeadParaEtapaDeHandoff` só para casar contra `crm_stages.handoff_keywords`
+   * (migration 0203) e escolher uma etapa por pessoa (ex.: "fernando" → "Repassado
+   * para o Fernando") em vez do destino genérico `chamar-humano`. Ausente/omitido =
+   * comportamento de sempre.
+   */
+  sinal?: string | null;
 }
 
 export interface TriggerHandoffResult {
@@ -183,6 +191,7 @@ export async function triggerHandoff(
         organizationId: input.organizationId,
         leadId: input.leadId,
         reason: input.reason,
+        sinal: input.sinal,
       }).catch((err) => {
         logger.warn("[handoff-orchestrator] moverLeadParaEtapaDeHandoff failed", {
           lead_id: input.leadId,
