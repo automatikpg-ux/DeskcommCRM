@@ -21,6 +21,14 @@ const LEAD = {
 };
 const ETAPA_HANDOFF = { id: "s-handoff", name: "Chamar Humano" };
 const ETAPA_ORIGEM = { name: "Agendado" };
+/** Forma que `resolveEtapaDeHandoff` espera de cada etapa candidata (migration 0203). */
+const ESTAGIO_HANDOFF_GENERICO = {
+  id: ETAPA_HANDOFF.id,
+  name: ETAPA_HANDOFF.name,
+  slug: SLUG_ETAPA_HANDOFF,
+  handoff_keywords: null,
+  is_archived: false,
+};
 
 interface Resposta {
   data: unknown;
@@ -28,7 +36,8 @@ interface Resposta {
 }
 interface Cenario {
   lead: Resposta;
-  etapaDestino: Resposta;
+  /** TODAS as etapas ativas do pipeline (0203) — não mais uma etapa só por slug. */
+  estagios: Resposta;
   update: Resposta;
   rpcError?: { message: string } | null;
 }
@@ -36,7 +45,7 @@ interface Cenario {
 function cenario(over: Partial<Cenario> = {}): Cenario {
   return {
     lead: { data: LEAD, error: null },
-    etapaDestino: { data: ETAPA_HANDOFF, error: null },
+    estagios: { data: [ESTAGIO_HANDOFF_GENERICO], error: null },
     update: { data: [{ id: LEAD.id }], error: null },
     ...over,
   };
@@ -49,9 +58,9 @@ interface ChamadaRpc {
 
 /**
  * Fake do query builder, no mesmo espírito do de `agent-stage-sync.test.ts`:
- * thenable, distingue SELECT de UPDATE, e diferencia as DUAS consultas em
- * `crm_stages` (etapa de destino vs. nome da etapa de origem) pelas chaves
- * passadas a `.eq()` — a de destino filtra por `slug`, a de origem não.
+ * thenable, distingue SELECT de UPDATE. `crm_stages` tem duas formas de
+ * consulta desde a 0203: a busca de TODAS as etapas ativas do pipeline (array,
+ * resolvida pelo `then`) e a busca da etapa de ORIGEM por id (`.maybeSingle()`).
  */
 function fakeAdmin(c: Cenario, rpcs: ChamadaRpc[] = []) {
   return {
@@ -62,27 +71,18 @@ function fakeAdmin(c: Cenario, rpcs: ChamadaRpc[] = []) {
     from(tabela: string) {
       const b = {
         _update: false,
-        _select: false,
-        _eqKeys: [] as string[],
-        select: () => {
-          b._select = true;
-          return b;
-        },
+        select: () => b,
         update: () => {
           b._update = true;
           return b;
         },
-        eq: (key: string) => {
-          b._eqKeys.push(key);
-          return b;
-        },
+        eq: () => b,
         maybeSingle: () => {
           if (tabela === "crm_leads") return Promise.resolve(c.lead);
-          if (b._eqKeys.includes("slug")) return Promise.resolve(c.etapaDestino);
           return Promise.resolve({ data: ETAPA_ORIGEM, error: null });
         },
         then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
-          const r = b._update ? c.update : c.lead;
+          const r = b._update ? c.update : tabela === "crm_stages" ? c.estagios : c.lead;
           return Promise.resolve(r).then(onF, onR);
         },
       };
@@ -124,7 +124,7 @@ describe("moverLeadParaEtapaDeHandoff", () => {
   });
 
   it("pipeline sem etapa 'chamar-humano': no-op, sem mover nem gravar atividade", async () => {
-    const r = await mover(cenario({ etapaDestino: { data: null, error: null } }));
+    const r = await mover(cenario({ estagios: { data: [], error: null } }));
     expect(r).toEqual({ moveu: false, motivo: "sem_etapa_de_handoff" });
     expect(vi.mocked(emitLeadActivity)).not.toHaveBeenCalled();
   });
