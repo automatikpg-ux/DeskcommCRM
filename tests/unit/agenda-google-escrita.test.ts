@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apagarNoGoogle, idDeEventoDoGoogle, publicarNoGoogle } from "@/lib/agenda/google/escrita";
+import { apagarNoGoogle, publicarNoGoogle } from "@/lib/agenda/google/escrita";
 import type { AgendamentoParaGoogle } from "@/lib/agenda/google/evento";
 
 /**
@@ -40,104 +40,81 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
 });
 
-describe("o id do evento no Google", () => {
-  it("é derivado do agendamento e estável entre chamadas", () => {
-    expect(idDeEventoDoGoogle(AGENDAMENTO.id)).toBe(idDeEventoDoGoogle(AGENDAMENTO.id));
-  });
-
-  it("respeita o alfabeto que o Google aceita — [a-v0-9], mínimo 5", () => {
-    const id = idDeEventoDoGoogle(AGENDAMENTO.id);
-    expect(id).toMatch(/^[a-v0-9]{5,1024}$/);
-  });
-
-  it("CONTROLE: ids diferentes não colidem", () => {
-    // Sem isto, uma normalização agressiva demais (por exemplo, remover TODO
-    // caractere não-alfabético e truncar) passaria nos dois casos acima e
-    // mandaria dois compromissos para o MESMO evento no Google.
-    const a = idDeEventoDoGoogle("0b1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e");
-    const b = idDeEventoDoGoogle("0b1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4f");
-    expect(a).not.toBe(b);
-  });
-});
-
 describe("publicar", () => {
-  it("PRIMEIRA publicação usa POST, com o id derivado no CORPO", async () => {
-    /**
-     * ⚠️ ESTE CASO ASSERTAVA `PUT`, E A PREMISSA ERA FALSA.
-     *
-     * Ele dizia que `POST criaria um evento novo a cada rodada` — o que é
-     * verdade para um POST SEM id, e falso para o POST com id derivado, que é o
-     * que `events.insert` aceita. E o PUT que ele exigia devolve **404 em id que
-     * não existe**: medido na VPS do dono, três compromissos, três
-     * `evento_sumiu: HTTP 404`, nenhum evento criado, repetindo a cada 5 minutos.
-     *
-     * O teste passava porque o dublê responde 200 a qualquer coisa. Ele guardava
-     * a CHAMADA e não o EFEITO — e a chamada que ele guardava era a errada.
-     *
-     * A propriedade que ele PROTEGIA continua protegida, e é o caso abaixo:
-     * reenviar não pode duplicar. O que muda é como isso se consegue.
-     *
-     * Contrato conferido na doc oficial, não de memória:
-     * https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
-     */
-    vi.mocked(fetch).mockResolvedValue(resposta(200, { id: "deskcommabc", sequence: 3 }));
+  /**
+   * ⚠️ ESTE ARQUIVO JÁ MENTIU DUAS VEZES SOBRE O VERBO CERTO — as duas
+   * primeiras versões estão no histórico do git, não repetidas aqui.
+   *
+   * A segunda mentira era exatamente o `id` customizado no corpo do POST, que
+   * o cabeçalho de `lib/agenda/google/escrita.ts` documenta como aceito pela
+   * doc oficial — e é verdade, só não é aceito por TODA conta. Medido numa
+   * conta Gmail pessoal real: `events.insert` com `id` (formato certo,
+   * `[a-v0-9]{5,1024}`, testado com 3 valores diferentes) devolve sempre
+   * `400 "Invalid resource id value."`. Sem `id` no corpo, mesmo payload, 200.
+   *
+   * A propriedade que os dois testes antigos protegiam — reenviar não pode
+   * duplicar — continua protegida, agora por busca de `iCalUID` antes de
+   * decidir o verbo, em vez de por um id customizado que esta conta recusa.
+   */
+  it("sem google_event_id guardado, busca por iCalUID antes de decidir o verbo", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(resposta(200, { items: [] })) // busca: nada achado
+      .mockResolvedValueOnce(resposta(200, { id: "novo-id-do-google", sequence: 0 }));
     const r = await publicarNoGoogle("tok", "ana@clinica.com.br", AGENDAMENTO);
     expect(r.ok).toBe(true);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(2);
 
-    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const [buscaUrl] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(buscaUrl).toContain("iCalUID=");
+
+    const [criarUrl, criarInit] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
     expect(
-      init.method,
-      "sem `google_event_id` o evento NÃO existe no Google, e `PUT` num id " +
-        "inexistente devolve 404 — foi o que matou a ida na v1.9.1",
+      criarInit.method,
+      "sem `google_event_id` e sem achado por iCalUID, o evento NÃO existe no " +
+        "Google, e `PUT` num id inexistente devolve 404 — foi o que matou a ida na v1.9.1",
     ).toBe("POST");
-    // A URL do POST é a COLEÇÃO: o id não vai nela.
-    expect(url).toContain(encodeURIComponent("ana@clinica.com.br"));
-    expect(url.endsWith("/events")).toBe(true);
+    expect(criarUrl.endsWith("/events")).toBe(true);
   });
 
-  it("o id derivado vai no CORPO do POST — é ele que impede a duplicata", async () => {
-    // A propriedade que o caso antigo protegia, medida onde ela agora vive.
-    // Sem o id no corpo, cada rodada do cron criaria um evento novo e a agenda
-    // do cliente encheria de cópias da mesma consulta.
-    vi.mocked(fetch).mockResolvedValue(resposta(200, { id: "deskcommabc" }));
+  it("o POST não leva `id` no corpo — esta conta recusa id customizado com 400", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(resposta(200, { items: [] }))
+      .mockResolvedValueOnce(resposta(200, { id: "novo-id-do-google" }));
     await publicarNoGoogle("tok", "cal", AGENDAMENTO);
-    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
-    const corpo = JSON.parse(String(init.body)) as { id?: string };
-    expect(corpo.id, "o POST foi sem id — o Google geraria um novo a cada rodada").toBe(
-      idDeEventoDoGoogle(AGENDAMENTO.id),
-    );
+    const [, criarInit] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    const corpo = JSON.parse(String(criarInit.body)) as { id?: string };
+    expect(corpo.id, "id customizado no corpo — é o que reproduz o 400 medido").toBeUndefined();
   });
 
-  it("republicação usa PUT, porque o evento JÁ existe lá", async () => {
+  it("achou o evento por iCalUID: usa PUT nele, não cria um segundo", async () => {
+    // Cobre a publicação anterior que criou o evento no Google mas morreu
+    // antes de gravar google_event_id aqui — sem isto, esta rodada duplicaria.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(resposta(200, { items: [{ id: "achado-por-uid", status: "confirmed" }] }))
+      .mockResolvedValueOnce(resposta(200, { id: "achado-por-uid", sequence: 1 }));
+    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
+    expect(r.ok).toBe(true);
+    const [atualizarUrl, atualizarInit] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    expect(atualizarInit.method, "achou por iCalUID — atualizar, nunca criar de novo").toBe("PUT");
+    expect(atualizarUrl).toContain("achado-por-uid");
+  });
+
+  it("busca por iCalUID falhando não bloqueia — segue para POST mesmo assim", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(resposta(500, {})) // busca falhou
+      .mockResolvedValueOnce(resposta(200, { id: "novo-id" }));
+    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
+    expect(r.ok, "busca sem resposta clara não pode travar a escrita").toBe(true);
+  });
+
+  it("com google_event_id guardado, pula a busca e vai direto de PUT", async () => {
     vi.mocked(fetch).mockResolvedValue(resposta(200, { id: "jaexiste", sequence: 4 }));
     const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO, "jaexiste");
     expect(r.ok).toBe(true);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(1);
     const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     expect(init.method, "com id guardado, criar de novo é que duplicaria").toBe("PUT");
-    expect(url).toContain(idDeEventoDoGoogle(AGENDAMENTO.id));
-  });
-
-  it("409 na criação cai para PUT — o id já estava lá", async () => {
-    /**
-     * O 409 `duplicate` é a resposta do Google para id que já existe, e a ação
-     * que a própria doc sugere é "use the events.update method".
-     * https://developers.google.com/workspace/calendar/api/guides/errors
-     *
-     * Isto acontece quando a publicação anterior criou o evento mas a gravação
-     * do `google_event_id` na nossa linha não completou — o evento existe lá e
-     * nós não sabemos. Sem este caminho, esse compromisso ficaria preso em 409
-     * para sempre.
-     */
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(resposta(409, { error: { errors: [{ reason: "duplicate" }] } }))
-      .mockResolvedValueOnce(resposta(200, { id: "deskcommabc", sequence: 1 }));
-    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
-    expect(r.ok, "o 409 não foi tratado — o compromisso ficaria preso nele").toBe(true);
-    expect(vi.mocked(fetch).mock.calls).toHaveLength(2);
-    const [, primeira] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
-    const [, segunda] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
-    expect(primeira.method).toBe("POST");
-    expect(segunda.method).toBe("PUT");
+    expect(url).toContain("jaexiste");
   });
 
   it("404 ao CRIAR não é `evento_sumiu` — é o calendário que não existe", async () => {
@@ -148,7 +125,9 @@ describe("publicar", () => {
      * que falta é o calendário. Consertos opostos: um pede reconciliar, o outro
      * reconectar.
      */
-    vi.mocked(fetch).mockResolvedValue(resposta(404, { error: { code: 404, message: "Not Found" } }));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(resposta(200, { items: [] }))
+      .mockResolvedValueOnce(resposta(404, { error: { code: 404, message: "Not Found" } }));
     const r = await publicarNoGoogle("tok", "cal-que-nao-existe", AGENDAMENTO);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.classificacao.desfecho).toBe("calendario_sumiu");
@@ -163,7 +142,7 @@ describe("publicar", () => {
 
   it("devolve o sequence que o Google mandou — é o que detecta edição alheia", async () => {
     vi.mocked(fetch).mockResolvedValue(resposta(200, { id: "x", sequence: 7 }));
-    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
+    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO, "x");
     expect(r.ok && r.sequence).toBe(7);
   });
 
@@ -171,7 +150,7 @@ describe("publicar", () => {
     vi.mocked(fetch).mockResolvedValue(
       resposta(403, { error: { code: 403, errors: [{ reason: "insufficientPermissions" }] } }),
     );
-    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
+    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO, "id-que-existia");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.classificacao.desfecho, "403 de escopo não pode virar retry infinito").toBe(
@@ -182,7 +161,7 @@ describe("publicar", () => {
 
   it("falha de REDE também é classificada — e é retentável", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("fetch failed"));
-    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO);
+    const r = await publicarNoGoogle("tok", "cal", AGENDAMENTO, "id-que-existia");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.classificacao.desfecho).toBe("transitorio");
   });
@@ -191,7 +170,7 @@ describe("publicar", () => {
 describe("apagar", () => {
   it("404 é SUCESSO — o evento não existe mais, que é o estado desejado", async () => {
     vi.mocked(fetch).mockResolvedValue(resposta(404, {}));
-    const r = await apagarNoGoogle("tok", "cal", AGENDAMENTO.id);
+    const r = await apagarNoGoogle("tok", "cal", "google-event-real-id");
     expect(
       r.ok,
       "tratar 404 como erro encheria a Central de avisos com uma falha que não é falha",
@@ -200,11 +179,11 @@ describe("apagar", () => {
 
   it("410 também", async () => {
     vi.mocked(fetch).mockResolvedValue(resposta(410, {}));
-    expect((await apagarNoGoogle("tok", "cal", AGENDAMENTO.id)).ok).toBe(true);
+    expect((await apagarNoGoogle("tok", "cal", "google-event-real-id")).ok).toBe(true);
   });
 
   it("CONTROLE: 500 NÃO é sucesso — senão o par acima passa por tolerar tudo", async () => {
     vi.mocked(fetch).mockResolvedValue(resposta(500, {}));
-    expect((await apagarNoGoogle("tok", "cal", AGENDAMENTO.id)).ok).toBe(false);
+    expect((await apagarNoGoogle("tok", "cal", "google-event-real-id")).ok).toBe(false);
   });
 });

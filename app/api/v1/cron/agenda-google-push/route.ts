@@ -175,8 +175,13 @@ async function executar(req: NextRequest): Promise<Response> {
     }
 
     const cancelado = linha.status === "cancelled";
+    // Cancelado sem NUNCA ter sincronizado: não há evento no Google pra
+    // apagar (ver addendum em lib/agenda/google/escrita.ts — apagarNoGoogle
+    // exige o google_event_id REAL, não re-deriva mais de linha.id).
     const efeito = cancelado
-      ? await apagarNoGoogle(accessToken, calendario, linha.id)
+      ? linha.google_event_id
+        ? await apagarNoGoogle(accessToken, calendario, linha.google_event_id)
+        : ({ ok: true, eventoId: "", sequence: null } as const)
       : await publicarNoGoogle(accessToken, calendario, {
           id: linha.id,
           organization_id: linha.organization_id,
