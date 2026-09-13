@@ -23992,6 +23992,39 @@ create trigger trg_org_voice_calls_set_updated_at
 
 notify pgrst, 'reload schema';
 
+-- ---- Meta App por organização, pra publicar no Instagram (migration 0239) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_apps (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+
+  app_id text not null,
+  app_secret_encrypted bytea,
+
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+
+  constraint instagram_apps_unique_org unique (organization_id)
+);
+
+alter table public.instagram_apps enable row level security;
+revoke all on public.instagram_apps from anon, authenticated;
+grant select, insert, update, delete on public.instagram_apps to service_role;
+
+drop trigger if exists trg_instagram_apps_updated_at on public.instagram_apps;
+create trigger trg_instagram_apps_updated_at
+  before update on public.instagram_apps
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_apps is
+  'Meta App usado para publicar conteúdo no Instagram em nome dos leads. Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated — o App Secret nunca volta ao browser.';
+comment on column public.instagram_apps.app_secret_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de ad_platform_connections e calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
