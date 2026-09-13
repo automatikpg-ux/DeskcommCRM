@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { audit } from "@/lib/audit";
 import { conexaoAtivaDoLead } from "@/lib/instagram/connections";
+import { instagramAppDaOrganizacao, numeroAutorizadoAPublicar } from "@/lib/instagram/apps";
 import { enderecoDeConexao } from "@/lib/instagram/config";
 import { urlPublicaTemporaria } from "@/lib/instagram/media-publica";
 import {
@@ -54,6 +55,31 @@ async function contatoDaConversa(
   return (data?.contact_id as string | undefined) ?? null;
 }
 
+/**
+ * A trava de "lista de teste" — mesmo raciocínio do pré-go-live do WhatsApp
+ * (migration 0243). Lança `instagram_indisponivel_para_este_contato` para
+ * QUALQUER contato fora da lista, nas três tools igualmente: enquanto a
+ * organização tiver uma lista configurada, ninguém fora dela alcança
+ * conectar, preparar OU confirmar — o número do agente é compartilhado, e
+ * sem esta trava qualquer lead que mandasse mensagem conseguiria publicar
+ * no próprio Instagram dele através do agente.
+ */
+async function garantirContatoAutorizado(ctx: McpContext, contactId: string): Promise<void> {
+  const app = await instagramAppDaOrganizacao(ctx.supabase, ctx.organizationId);
+  if (!app) throw new Error("instagram_nao_configurado");
+
+  const { data: contato } = await ctx.supabase
+    .from("contacts")
+    .select("phone_number")
+    .eq("id", contactId)
+    .eq("organization_id", ctx.organizationId)
+    .maybeSingle();
+
+  if (!numeroAutorizadoAPublicar(app, (contato?.phone_number as string | null) ?? null)) {
+    throw new Error("instagram_indisponivel_para_este_contato");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // crm_instagram_conectar
 // ---------------------------------------------------------------------------
@@ -75,6 +101,7 @@ export const crmInstagramConectar: McpToolDefinition<typeof conectarInputShape> 
   handler: async (input, ctx) => {
     const contactId = await contatoDaConversa(ctx, input.conversation_id);
     if (!contactId) throw new Error("conversation_not_found");
+    await garantirContatoAutorizado(ctx, contactId);
 
     const conexao = await conexaoAtivaDoLead(ctx.supabase, ctx.organizationId, contactId);
     if (conexao) {
@@ -132,6 +159,7 @@ export const crmInstagramPrepararPost: McpToolDefinition<typeof prepararInputSha
   handler: async (input, ctx) => {
     const contactId = await contatoDaConversa(ctx, input.conversation_id);
     if (!contactId) throw new Error("conversation_not_found");
+    await garantirContatoAutorizado(ctx, contactId);
 
     const conexao = await conexaoAtivaDoLead(ctx.supabase, ctx.organizationId, contactId);
     if (!conexao) throw new Error("instagram_nao_conectado");
@@ -230,6 +258,7 @@ export const crmInstagramConfirmarPost: McpToolDefinition<typeof confirmarInputS
       .maybeSingle();
     if (!pendente) throw new Error("post_nao_encontrado");
     if (pendente.status !== "pending") throw new Error(`post_ja_${pendente.status}`);
+    await garantirContatoAutorizado(ctx, pendente.contact_id);
 
     const conexao = await conexaoAtivaDoLead(ctx.supabase, ctx.organizationId, pendente.contact_id);
     if (!conexao) throw new Error("instagram_nao_conectado");

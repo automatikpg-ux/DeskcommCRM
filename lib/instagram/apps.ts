@@ -9,10 +9,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 
 export interface InstagramApp {
   appId: string;
   appSecret: string;
+  /** `null` = sem restrição. Populado = lista de teste (mesmo desenho do pré-go-live do WhatsApp). */
+  allowedPhoneNumbers: string[] | null;
 }
 
 /**
@@ -27,7 +30,7 @@ export async function instagramAppDaOrganizacao(
 ): Promise<InstagramApp | null> {
   const { data, error } = await admin
     .from("instagram_apps")
-    .select("app_id, app_secret_encrypted")
+    .select("app_id, app_secret_encrypted, allowed_phone_numbers")
     .eq("organization_id", organizationId)
     .eq("is_active", true)
     .maybeSingle();
@@ -40,5 +43,28 @@ export async function instagramAppDaOrganizacao(
   );
   if (!appSecret) return null;
 
-  return { appId: data.app_id as string, appSecret };
+  return {
+    appId: data.app_id as string,
+    appSecret,
+    allowedPhoneNumbers: (data.allowed_phone_numbers as string[] | null) ?? null,
+  };
+}
+
+/**
+ * `true` quando a organização não tem lista de teste (sem restrição) OU
+ * quando o telefone está nela. Cobre as variantes do nono dígito do Brasil
+ * pela mesma comparação do pré-go-live do WhatsApp — sem isso, `+5513...`
+ * gravado sem o 9 não bateria com o número que chega com ele.
+ */
+export function numeroAutorizadoAPublicar(
+  app: Pick<InstagramApp, "allowedPhoneNumbers">,
+  telefoneDoContato: string | null | undefined,
+): boolean {
+  if (!app.allowedPhoneNumbers || app.allowedPhoneNumbers.length === 0) return true;
+  if (!telefoneDoContato) return false;
+  const variantesDoContato = new Set(phoneLookupVariants(telefoneDoContato));
+  if (variantesDoContato.size === 0) return false;
+  return app.allowedPhoneNumbers.some((numero) =>
+    phoneLookupVariants(numero).some((variante) => variantesDoContato.has(variante)),
+  );
 }
