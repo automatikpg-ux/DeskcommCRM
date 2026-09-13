@@ -24067,6 +24067,55 @@ comment on table public.instagram_connections is
 comment on column public.instagram_connections.access_token_encrypted is
   'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de instagram_apps e ad_platform_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
 
+-- ---- O rascunho de post do Instagram, esperando confirmação (migration 0241) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_pending_posts (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  conversation_id uuid references public.conversations(id) on delete set null,
+  source_message_id uuid not null references public.messages(id) on delete cascade,
+
+  destino text not null check (destino in ('feed', 'reels')),
+  caption text not null,
+  hashtags text[] not null default '{}',
+
+  status text not null default 'pending' check (status in ('pending', 'published', 'cancelled', 'expired', 'failed')),
+  ig_media_id text,
+  ig_permalink text,
+  error_message text,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  published_at timestamptz
+);
+
+create index if not exists instagram_pending_posts_org_contact_idx
+  on public.instagram_pending_posts (organization_id, contact_id, status);
+
+alter table public.instagram_pending_posts enable row level security;
+
+drop policy if exists tenant_isolation_instagram_pending_posts_select on public.instagram_pending_posts;
+create policy tenant_isolation_instagram_pending_posts_select on public.instagram_pending_posts
+  for select
+  using (organization_id in (select * from public.fn_user_org_ids()));
+
+drop policy if exists tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts;
+create policy tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+drop trigger if exists trg_instagram_pending_posts_updated_at on public.instagram_pending_posts;
+create trigger trg_instagram_pending_posts_updated_at
+  before update on public.instagram_pending_posts
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_pending_posts is
+  'Rascunho de post do Instagram esperando confirmação do lead antes de publicar (crm_instagram_preparar_post / crm_instagram_confirmar_post).';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

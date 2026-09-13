@@ -438,6 +438,12 @@ export const AUDIT_ACTIONS = [
   "instagram.connect_iniciado",
   "instagram.connect_falhou",
   "instagram.connect_concluido",
+  // O agente prepara (rascunho, sem efeito) e só publica num turno posterior,
+  // depois que o lead confirmou — nunca a mesma chamada. `post_falhou` cobre
+  // qualquer etapa da publicação (container, processamento, media_publish).
+  "instagram.post_preparado",
+  "instagram.post_publicado",
+  "instagram.post_falhou",
   // Tipos de agendamento: mudar duração, categoria ou responsável muda o que a
   // IA oferece ao cliente, então é mutação de configuração e audita.
   "agenda.tipo_criado",
