@@ -24025,6 +24025,48 @@ comment on table public.instagram_apps is
 comment on column public.instagram_apps.app_secret_encrypted is
   'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de ad_platform_connections e calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
 
+-- ---- A conta do Instagram de cada lead, conectada (migration 0240) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_connections (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+
+  ig_user_id text not null,
+  ig_username text,
+  ig_account_type text,
+
+  access_token_encrypted bytea not null,
+  token_expires_at timestamptz,
+
+  connected_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint instagram_connections_unique_contact unique (organization_id, contact_id)
+);
+
+create unique index if not exists instagram_connections_ig_user_ativo_unique
+  on public.instagram_connections (organization_id, ig_user_id)
+  where revoked_at is null;
+
+alter table public.instagram_connections enable row level security;
+revoke all on public.instagram_connections from anon, authenticated;
+grant select, insert, update, delete on public.instagram_connections to service_role;
+
+drop trigger if exists trg_instagram_connections_updated_at on public.instagram_connections;
+create trigger trg_instagram_connections_updated_at
+  before update on public.instagram_connections
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_connections is
+  'Conta Instagram Professional de um lead, conectada via OAuth para publicar em nome dele (feed/reels/stories). Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated.';
+comment on column public.instagram_connections.access_token_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de instagram_apps e ad_platform_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

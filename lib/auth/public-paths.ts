@@ -37,6 +37,12 @@ export const PUBLIC_PATHS: RegExp[] = [
   // qualquer sub-path futuro nascer público de carona.
   /^\/api\/v1\/agenda\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
+  // Conexão do LEAD com o Instagram dele — quem chega aqui não é usuário
+  // logado do CRM, é o lead clicando num link mandado pelo WhatsApp. A
+  // identidade vem do `state` assinado (`lib/instagram/estado.ts`), não da
+  // sessão. Mesma natureza das duas linhas acima.
+  /^\/api\/v1\/instagram\/oauth\/start$/,
+  /^\/api\/v1\/instagram\/oauth\/callback$/,
   /^\/api\/internal\//,
   /^\/api\/mcp(\/.*)?$/,
   // GET /api/v1/contacts aceita SESSÃO ou Bearer `dsk_...` (api_tokens) — a
