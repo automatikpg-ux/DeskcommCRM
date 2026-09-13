@@ -24127,6 +24127,16 @@ alter table public.instagram_pending_posts
   add constraint instagram_pending_posts_destino_check
   check (destino in ('feed', 'reels', 'stories'));
 
+-- ---- Lista de teste de quem pode publicar no Instagram (migration 0243) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+alter table public.instagram_apps
+  add column if not exists allowed_phone_numbers text[];
+
+comment on column public.instagram_apps.allowed_phone_numbers is
+  'Lista de teste de quem pode usar crm_instagram_* (conectar/preparar/confirmar). NULL = sem restrição (padrão). Comparação por lib/channels/phone-variants.ts (cobre o nono dígito do Brasil).';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
