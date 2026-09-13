@@ -87,7 +87,7 @@ export const PACOTES: ReadonlyArray<PacoteMeta> = [
     id: "divulgar",
     rotulo: "Publicar nas redes do cliente",
     explicacao:
-      "O agente recebe foto ou vídeo do lead, sugere legenda e hashtags, e publica no Instagram dele (feed ou reels) depois que ele confirmar.",
+      "O agente recebe foto ou vídeo do cliente, sugere legenda e hashtags, e publica no Instagram dele (feed, reels ou stories) depois que ele confirmar.",
     ordem: 7,
   },
 ] as const;

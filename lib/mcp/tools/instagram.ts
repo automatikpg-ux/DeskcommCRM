@@ -98,18 +98,28 @@ export const crmInstagramConectar: McpToolDefinition<typeof conectarInputShape> 
 const prepararInputShape = {
   conversation_id: z.string().uuid(),
   message_id: z.string().uuid().describe("A mensagem do WhatsApp que trouxe a foto ou o vídeo."),
-  destino: z.enum(["feed", "reels"]),
-  caption: z.string().min(1).max(2200),
-  hashtags: z.array(z.string().min(1).max(60)).max(5).describe("Até 5 hashtags, sem o #."),
+  destino: z.enum(["feed", "reels", "stories"]),
+  caption: z
+    .string()
+    .max(2200)
+    .optional()
+    .describe("Obrigatório para feed/reels. Ignorado para stories — o Instagram não aceita legenda em story."),
+  hashtags: z
+    .array(z.string().min(1).max(60))
+    .max(5)
+    .optional()
+    .describe("Até 5 hashtags, sem o #. Ignorado para stories."),
 };
 
 export const crmInstagramPrepararPost: McpToolDefinition<typeof prepararInputShape> = {
   name: "crm_instagram_preparar_post",
   description:
-    "Prepara um post do Instagram a partir da foto/vídeo que o lead mandou (feed = foto com legenda, " +
-    "reels = vídeo curto com legenda) — mas NÃO publica nada ainda. Use depois de crm_instagram_conectar " +
-    "confirmar que o lead está conectado. Sempre mostre a legenda e as hashtags geradas ao lead e peça " +
-    "confirmação explícita antes de chamar crm_instagram_confirmar_post — publicar é irreversível e público.",
+    "Prepara um post do Instagram a partir da foto/vídeo que o lead mandou — feed (foto, com legenda), " +
+    "reels (vídeo curto, com legenda) ou stories (foto ou vídeo, SEM legenda — o Instagram não aceita " +
+    "legenda em story, então nem pergunte por uma se o destino for stories). NÃO publica nada ainda. Use " +
+    "depois de crm_instagram_conectar confirmar que o lead está conectado. Para feed/reels, sempre mostre " +
+    "a legenda e as hashtags geradas ao lead; para stories, mostre que vai publicar a mídia sem legenda. " +
+    "Peça confirmação explícita antes de chamar crm_instagram_confirmar_post — publicar é irreversível e público.",
   inputSchema: prepararInputShape,
   category: "write",
   // `ai_operator`, não `agent`: não existe rota HTTP equivalente que um
@@ -141,6 +151,14 @@ export const crmInstagramPrepararPost: McpToolDefinition<typeof prepararInputSha
     const ehVideo = mime.startsWith("video/");
     if (input.destino === "feed" && !ehImagem) throw new Error("feed_exige_imagem");
     if (input.destino === "reels" && !ehVideo) throw new Error("reels_exige_video");
+    if (input.destino === "stories" && !ehImagem && !ehVideo) throw new Error("stories_exige_foto_ou_video");
+
+    // Stories não aceita legenda na API do Instagram — nunca grava o texto
+    // que o modelo eventualmente mandar para esse destino.
+    const ehStories = input.destino === "stories";
+    if (!ehStories && !input.caption?.trim()) throw new Error("caption_obrigatoria_para_feed_e_reels");
+    const caption = ehStories ? "" : (input.caption ?? "").trim();
+    const hashtags = ehStories ? [] : (input.hashtags ?? []);
 
     const { data: criado, error } = await ctx.supabase
       .from("instagram_pending_posts")
@@ -150,8 +168,8 @@ export const crmInstagramPrepararPost: McpToolDefinition<typeof prepararInputSha
         conversation_id: input.conversation_id,
         source_message_id: input.message_id,
         destino: input.destino,
-        caption: input.caption,
-        hashtags: input.hashtags,
+        caption,
+        hashtags,
         status: "pending",
       })
       .select("id")
@@ -173,9 +191,11 @@ export const crmInstagramPrepararPost: McpToolDefinition<typeof prepararInputSha
     return {
       pending_post_id: criado.id,
       destino: input.destino,
-      caption: input.caption,
-      hashtags: input.hashtags,
-      instrucao: "Mostre a legenda e as hashtags ao lead e só chame crm_instagram_confirmar_post depois que ele confirmar explicitamente.",
+      caption,
+      hashtags,
+      instrucao: ehStories
+        ? "Mostre ao lead que vai publicar essa mídia como story (sem legenda) e só chame crm_instagram_confirmar_post depois que ele confirmar explicitamente."
+        : "Mostre a legenda e as hashtags ao lead e só chame crm_instagram_confirmar_post depois que ele confirmar explicitamente.",
     };
   },
 };
@@ -220,6 +240,7 @@ export const crmInstagramConfirmarPost: McpToolDefinition<typeof confirmarInputS
       pendente.source_message_id,
     );
     if (!midia) throw new Error("midia_indisponivel");
+    if (midia.tipo === "outro") throw new Error("tipo_de_midia_nao_suportado");
 
     const legendaCompleta = [
       pendente.caption as string,
@@ -251,8 +272,9 @@ export const crmInstagramConfirmarPost: McpToolDefinition<typeof confirmarInputS
     const container = await criarContainer({
       igUserId: conexao.igUserId,
       accessToken: conexao.accessToken,
-      destino: pendente.destino as "feed" | "reels",
+      destino: pendente.destino as "feed" | "reels" | "stories",
       mediaUrl: midia.url,
+      mediaTipo: midia.tipo,
       caption: legendaCompleta,
     });
     if (!container.ok) return falhar(container.motivo);

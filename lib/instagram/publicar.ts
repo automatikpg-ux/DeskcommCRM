@@ -36,18 +36,20 @@ export type ResultadoContainer =
 export async function criarContainer(args: {
   igUserId: string;
   accessToken: string;
-  destino: "feed" | "reels";
+  destino: "feed" | "reels" | "stories";
   mediaUrl: string;
+  mediaTipo: "image" | "video";
+  /** Ignorada para `stories` — a API do Instagram não aceita legenda em story. */
   caption: string;
 }): Promise<ResultadoContainer> {
   const url = new URL(`${GRAPH_BASE}/${args.igUserId}/media`);
-  const body = new URLSearchParams({
-    access_token: args.accessToken,
-    caption: args.caption,
-    ...(args.destino === "reels"
-      ? { media_type: "REELS", video_url: args.mediaUrl }
-      : { image_url: args.mediaUrl }),
-  });
+  const campos: Record<string, string> = { access_token: args.accessToken };
+  if (args.destino !== "stories") campos.caption = args.caption;
+  if (args.mediaTipo === "video") campos.video_url = args.mediaUrl;
+  else campos.image_url = args.mediaUrl;
+  if (args.destino === "reels") campos.media_type = "REELS";
+  else if (args.destino === "stories") campos.media_type = "STORIES";
+  const body = new URLSearchParams(campos);
 
   const { status, corpo } = await chamar(url, {
     method: "POST",

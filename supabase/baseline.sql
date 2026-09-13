@@ -24116,6 +24116,17 @@ create trigger trg_instagram_pending_posts_updated_at
 comment on table public.instagram_pending_posts is
   'Rascunho de post do Instagram esperando confirmação do lead antes de publicar (crm_instagram_preparar_post / crm_instagram_confirmar_post).';
 
+-- ---- Stories entra como terceiro destino do post preparado (migration 0242) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+alter table public.instagram_pending_posts
+  drop constraint if exists instagram_pending_posts_destino_check;
+
+alter table public.instagram_pending_posts
+  add constraint instagram_pending_posts_destino_check
+  check (destino in ('feed', 'reels', 'stories'));
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

@@ -1,5 +1,6 @@
 /**
- * Capacidades de INSTAGRAM — publicar no feed/reels do cliente em nome dele.
+ * Capacidades de INSTAGRAM — publicar no feed, reels ou stories do cliente
+ * em nome dele.
  *
  * Três capacidades separadas de propósito: conectar (segura, só link),
  * preparar (grava rascunho, sem efeito público) e confirmar (a única que
@@ -24,7 +25,7 @@ export const TOOLS_INSTAGRAM = declararTools([
     category: "write",
     rotulo: "Preparar um post do Instagram",
     explicacao:
-      "A partir da foto ou vídeo que o cliente mandou, monta um rascunho de post (legenda e hashtags) para o feed ou os reels — ainda sem publicar nada.",
+      "A partir da foto ou vídeo que o cliente mandou, monta um rascunho de publicação para o feed, os reels ou os stories — com legenda e hashtags quando o destino permitir. Ainda sem publicar nada.",
     oQueToca: "Instagram do cliente",
     risco: "atencao",
     pacotes: ["divulgar"],
@@ -34,7 +35,7 @@ export const TOOLS_INSTAGRAM = declararTools([
     category: "write",
     rotulo: "Publicar no Instagram do cliente",
     explicacao:
-      "Publica de verdade, na conta do cliente, o post que foi preparado — feed ou reels, visível para quem o segue. Não tem como desfazer por aqui.",
+      "Publica de verdade, na conta do cliente, o que foi preparado — feed, reels ou stories, visível para quem o segue. Não tem como desfazer por aqui.",
     oQueToca: "Instagram do cliente",
     risco: "critico",
     pacotes: ["divulgar"],
