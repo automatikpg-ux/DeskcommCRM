@@ -23992,6 +23992,141 @@ create trigger trg_org_voice_calls_set_updated_at
 
 notify pgrst, 'reload schema';
 
+-- ---- Meta App por organização, pra publicar no Instagram (migration 0239) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_apps (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+
+  app_id text not null,
+  app_secret_encrypted bytea,
+
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+
+  constraint instagram_apps_unique_org unique (organization_id)
+);
+
+alter table public.instagram_apps enable row level security;
+revoke all on public.instagram_apps from anon, authenticated;
+grant select, insert, update, delete on public.instagram_apps to service_role;
+
+drop trigger if exists trg_instagram_apps_updated_at on public.instagram_apps;
+create trigger trg_instagram_apps_updated_at
+  before update on public.instagram_apps
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_apps is
+  'Meta App usado para publicar conteúdo no Instagram em nome dos leads. Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated — o App Secret nunca volta ao browser.';
+comment on column public.instagram_apps.app_secret_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de ad_platform_connections e calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
+-- ---- A conta do Instagram de cada lead, conectada (migration 0240) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_connections (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+
+  ig_user_id text not null,
+  ig_username text,
+  ig_account_type text,
+
+  access_token_encrypted bytea not null,
+  token_expires_at timestamptz,
+
+  connected_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint instagram_connections_unique_contact unique (organization_id, contact_id)
+);
+
+create unique index if not exists instagram_connections_ig_user_ativo_unique
+  on public.instagram_connections (organization_id, ig_user_id)
+  where revoked_at is null;
+
+alter table public.instagram_connections enable row level security;
+revoke all on public.instagram_connections from anon, authenticated;
+grant select, insert, update, delete on public.instagram_connections to service_role;
+
+drop trigger if exists trg_instagram_connections_updated_at on public.instagram_connections;
+create trigger trg_instagram_connections_updated_at
+  before update on public.instagram_connections
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_connections is
+  'Conta Instagram Professional de um lead, conectada via OAuth para publicar em nome dele (feed/reels/stories). Server-side only: RLS ligada sem policies e grants revogados de anon/authenticated.';
+comment on column public.instagram_connections.access_token_encrypted is
+  'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de instagram_apps e ad_platform_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
+
+-- ---- O rascunho de post do Instagram, esperando confirmação (migration 0241) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.instagram_pending_posts (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  conversation_id uuid references public.conversations(id) on delete set null,
+  source_message_id uuid not null references public.messages(id) on delete cascade,
+
+  destino text not null check (destino in ('feed', 'reels')),
+  caption text not null,
+  hashtags text[] not null default '{}',
+
+  status text not null default 'pending' check (status in ('pending', 'published', 'cancelled', 'expired', 'failed')),
+  ig_media_id text,
+  ig_permalink text,
+  error_message text,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  published_at timestamptz
+);
+
+create index if not exists instagram_pending_posts_org_contact_idx
+  on public.instagram_pending_posts (organization_id, contact_id, status);
+
+alter table public.instagram_pending_posts enable row level security;
+
+drop policy if exists tenant_isolation_instagram_pending_posts_select on public.instagram_pending_posts;
+create policy tenant_isolation_instagram_pending_posts_select on public.instagram_pending_posts
+  for select
+  using (organization_id in (select * from public.fn_user_org_ids()));
+
+drop policy if exists tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts;
+create policy tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts
+  for all
+  using (organization_id in (select * from public.fn_user_org_ids()))
+  with check (organization_id in (select * from public.fn_user_org_ids()));
+
+drop trigger if exists trg_instagram_pending_posts_updated_at on public.instagram_pending_posts;
+create trigger trg_instagram_pending_posts_updated_at
+  before update on public.instagram_pending_posts
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.instagram_pending_posts is
+  'Rascunho de post do Instagram esperando confirmação do lead antes de publicar (crm_instagram_preparar_post / crm_instagram_confirmar_post).';
+
+-- ---- Stories entra como terceiro destino do post preparado (migration 0242) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+alter table public.instagram_pending_posts
+  drop constraint if exists instagram_pending_posts_destino_check;
+
+alter table public.instagram_pending_posts
+  add constraint instagram_pending_posts_destino_check
+  check (destino in ('feed', 'reels', 'stories'));
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES
