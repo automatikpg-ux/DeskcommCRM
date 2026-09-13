@@ -144,6 +144,12 @@ const schema = z.object({
   // contêiner do WAHA; o app precisa dele para CONFERIR a assinatura — e não o
   // declarava aqui, então nunca teve como verificar nada.
   WAHA_HMAC_SECRET: z.string().optional().default(""),
+  // Handshake `hub.challenge` do webhook de mensagens do Instagram — a Meta
+  // exige um webhook configurado para o produto "Instagram" mesmo quando só
+  // usamos a parte de publicação (não processamos evento nenhum dele ainda;
+  // ver app/api/v1/webhooks/instagram/route.ts). Valor arbitrário escolhido
+  // na instalação, replicado no painel do Meta App.
+  INSTAGRAM_WEBHOOK_VERIFY_TOKEN: z.string().optional().default(""),
   // "true" exige assinatura válida em todo webhook do WAHA. Fica desligado por
   // padrão porque o WAHA Core não assina (medido: 2026.7.2 CORE manda os
   // eventos sem header mesmo com WHATSAPP_HOOK_HMAC configurado), e exigir
