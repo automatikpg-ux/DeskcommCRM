@@ -48,7 +48,12 @@ function seedConfig(): void {
       (id, organization_id, conversation_id, channel_session_id, contact_id, type, direction, body)
       values ('${IG_MSG}', '${GOV_ORG}', '${GOV_CONV_UNASSIGNED}', '${GOV_SESSION}', '${GOV_CONTACT_1}',
               'text', 'inbound', 'RBAC invariant probe')
-      on conflict do nothing;
+      -- Alvo EXPLÍCITO (id): sem ele o Postgres considera TODAS as unique
+      -- constraints da tabela como árbitro possível, inclusive a de
+      -- organization_id+external_id, que é DEFERRABLE — e o Postgres recusa
+      -- a query inteira (ON CONFLICT does not support deferrable unique
+      -- constraints as arbiters), não só ignora a deferrable.
+      on conflict (id) do nothing;
     insert into public.instagram_pending_posts
       (id, organization_id, contact_id, source_message_id, destino, caption)
       values ('${IG_POST}', '${GOV_ORG}', '${GOV_CONTACT_1}', '${IG_MSG}', 'feed', 'RASCUNHO ORIGINAL')
