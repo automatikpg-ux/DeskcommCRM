@@ -15,6 +15,13 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/v1\/health$/,
   /^\/api\/v1\/webhooks\//,
   /^\/api\/v1\/cron\//,
+  // Landing page de captura de clique do Google Ads (migration 0252). Quem
+  // chega aqui é o NAVEGADOR de quem clicou no anúncio — nunca tem, e não
+  // pode ter, cookie de sessão nossa. Sem esta linha o proxy devolve 401
+  // antes de a rota existir, e todo clique pago vira um erro em vez de um
+  // redirect pro WhatsApp. Âncorado num segmento só (`[^/]+$`): um sub-path
+  // futuro sob `/google/` não nasce público de carona.
+  /^\/api\/v1\/anuncios\/google\/[^/]+$/,
   // Heartbeat do agente do host (bearer INTERNAL_SECRET/INTERNAL_CRON_SECRET,
   // checado dentro da própria rota) — sem cookie de sessão, igual /cron/.
   /^\/api\/v1\/system\/agent$/,
