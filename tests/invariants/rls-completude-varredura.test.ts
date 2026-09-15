@@ -235,6 +235,24 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "`describe.each` da linha acima. Guarda o `gclid` de cada clique de " +
       "anúncio e o token que o liga à mensagem do WhatsApp.",
   },
+  // As duas entradas abaixo são do recurso de Instagram (migrations 0239/0240),
+  // não do eixo de Google Ads deste PR — encontradas pela MESMA varredura ao
+  // rodar contra esta branch, e corrigidas de passagem porque o gate bloqueava
+  // as duas mudanças juntas. O schema já nascia deny-all; só faltava a prova.
+  {
+    tabela: "instagram_apps",
+    razao:
+      "tests/invariants/instagram-credenciais-e-server-side.test.ts — mesmo " +
+      "desenho deny-all de ad_platform_connections. Guarda o App Secret que " +
+      "assina toda chamada feita em nome de qualquer lead conectado.",
+  },
+  {
+    tabela: "instagram_connections",
+    razao:
+      "tests/invariants/instagram-credenciais-e-server-side.test.ts — mesmo " +
+      "`describe.each` da linha acima. Guarda o token OAuth que publica de " +
+      "fato na conta Instagram de cada lead.",
+  },
 ];
 
 /**

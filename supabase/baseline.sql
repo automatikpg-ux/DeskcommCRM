@@ -24272,3 +24272,21 @@ comment on column public.google_ads_click_refs.matched_at is
 alter table public.google_ads_click_refs enable row level security;
 revoke all on public.google_ads_click_refs from anon, authenticated;
 grant select, insert, update, delete on public.google_ads_click_refs to service_role;
+
+-- ---- instagram_pending_posts: escrita ganha gate de papel (migration 0253) ----
+-- Forward-fix da 0241 (issue #150): a policy de escrita isolava por tenant sem
+-- isolar por papel — qualquer `viewer` autenticado podia criar/editar/apagar um
+-- rascunho de post do Instagram pelo PostgREST direto. Leitura continua sem
+-- gate: quem administra a organização precisa VER o que está prestes a sair.
+
+drop policy if exists tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts;
+create policy tenant_isolation_instagram_pending_posts_modify on public.instagram_pending_posts
+  for all
+  using (
+    organization_id in (select * from public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'manager')
+  )
+  with check (
+    organization_id in (select * from public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'manager')
+  );
