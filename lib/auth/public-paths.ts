@@ -43,6 +43,11 @@ export const PUBLIC_PATHS: RegExp[] = [
   // Ancorados com `$` de propósito — `/^\/api\/v1\/agenda\/google\// deixaria
   // qualquer sub-path futuro nascer público de carona.
   /^\/api\/v1\/agenda\/google\/callback$/,
+  // Volta do consentimento do Google Ads. Mesma natureza das duas linhas
+  // acima: a identidade vem do `state` assinado
+  // (`lib/plataformas-de-anuncio/google/estado.ts`), não da sessão — quem
+  // volta do Google não tem, e não pode ter, o cookie.
+  /^\/api\/v1\/plataformas-de-anuncio\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
   // Conexão do LEAD com o Instagram dele — quem chega aqui não é usuário
   // logado do CRM, é o lead clicando num link mandado pelo WhatsApp. A
