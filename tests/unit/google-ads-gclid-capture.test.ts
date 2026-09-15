@@ -140,7 +140,7 @@ describe("extrairEEstamparAtribuicaoGoogle", () => {
   });
 
   it("acha o token, casa o clique e estampa o contato com o gclid", async () => {
-    const rpc = vi.fn(async () => ({ error: null }));
+    const rpc = vi.fn(async (_fn: string, _params: Record<string, unknown>) => ({ error: null }));
     const admin = {
       from: (tabela: string) => {
         if (tabela !== "google_ads_click_refs") throw new Error(`tabela inesperada: ${tabela}`);
