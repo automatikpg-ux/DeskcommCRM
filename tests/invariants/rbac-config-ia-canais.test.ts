@@ -30,7 +30,7 @@ import {
 
 const AGENTE_CONFIG = "eeeeeeee-1111-4000-8000-000000000001";
 const CRED_CONFIG = "eeeeeeee-2222-4000-8000-000000000001";
-/** 0253: rascunho de post do Instagram, para o par viewer-barrado/manager-passa. */
+/** 0262: rascunho de post do Instagram, para o par viewer-barrado/manager-passa. */
 const IG_MSG = "eeeeeeee-3333-4000-8000-000000000001";
 const IG_POST = "eeeeeeee-4444-4000-8000-000000000001";
 
@@ -141,7 +141,7 @@ describe("0150 — escrita de config de IA/canais exige admin", () => {
     ).toBe(1);
   });
 
-  // 0253 — forward-fix da 0241: instagram_pending_posts nasceu com policy de
+  // 0262 — forward-fix da 0241: instagram_pending_posts nasceu com policy de
   // escrita só-tenancy, sem gate de papel. Mesmo par negativo/positivo acima.
   it("viewer NÃO edita o rascunho de post do Instagram", () => {
     expect(
@@ -255,7 +255,7 @@ describe("0150 — a dívida de RBAC não cresce", () => {
       // formato: um `viewer` DELETAVA `ai_chunks` da própria organização
       // falando direto com o PostgREST, com o JWT dele.
       "ai_knowledge_sources", "ai_knowledge_versions", "ai_chunks", "ai_faq_items",
-      // 0253 — forward-fix da 0241, achada por esta própria varredura.
+      // 0262 — forward-fix da 0241, achada por esta própria varredura.
       "instagram_pending_posts",
     ];
     const semRole = sql(`
