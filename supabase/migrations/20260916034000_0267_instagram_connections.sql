@@ -1,11 +1,11 @@
--- 0265 · A conta do Instagram de CADA LEAD, conectada.
+-- 0267 · A conta do Instagram de CADA LEAD, conectada.
 --
--- `instagram_apps` (0264) guarda o App que faz a ponte com a Meta — um por
+-- `instagram_apps` (0266) guarda o App que faz a ponte com a Meta — um por
 -- organização. Esta tabela guarda o token que efetivamente publica em nome de
 -- UM lead: um Instagram Professional (Business/Creator) por contato.
 --
 -- ─── Por que RLS ligada com ZERO policies ───────────────────────────────────
--- Mesmo motivo de `instagram_apps` (0264) e `ad_platform_connections` (0213):
+-- Mesmo motivo de `instagram_apps` (0266) e `ad_platform_connections` (0213):
 -- este token publica conteúdo público na conta de outra pessoa — vazá-lo pelo
 -- PostgREST pra qualquer membro autenticado da organização é pior que vazar um
 -- token de leitura. Só `service_role` alcança.

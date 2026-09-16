@@ -1,4 +1,4 @@
--- 0268 · Lista de teste de quem pode publicar no Instagram — igual ao
+-- 0270 · Lista de teste de quem pode publicar no Instagram — igual ao
 -- pré-go-live do WhatsApp, mas para a capacidade de publicação.
 --
 -- O número do WhatsApp do agente é COMPARTILHADO — qualquer pessoa que

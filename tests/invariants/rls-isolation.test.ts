@@ -255,7 +255,7 @@ beforeAll(() => {
             values (v_org, false);
         end if;
 
-        -- instagram_pending_posts (0266): o rascunho de post do Instagram,
+        -- instagram_pending_posts (0268): o rascunho de post do Instagram,
         -- preso a uma mensagem de origem. Reusa a v_msg gravada acima (o
         -- bloco de messages não capturava o id porque nada mais precisava
         -- dele até aqui).
@@ -339,11 +339,11 @@ export const TABLES = [
   // aceitou o risco do segundo aparelho vinculado: vazar entre organizacoes
   // diria a uma empresa quem, na outra, ligou a feature e quando.
   "org_voice_calls",
-  // instagram_pending_posts (0266, RBAC fechado na 0262): a leitura é
+  // instagram_pending_posts (0268, RBAC fechado na 0264): a leitura é
   // org-scoped SEM gate de papel — quem administra a organização precisa ver
   // o que está prestes a ser publicado, e o usuário semeado aqui (`agent`)
   // já basta para o controle positivo. A ESCRITA exige `manager` desde a
-  // 0262, e esse segundo eixo é medido em
+  // 0264, e esse segundo eixo é medido em
   // `tests/invariants/rbac-config-ia-canais.test.ts`, não aqui — mesma
   // separação que `catalog_products`/`crm_tasks` já usam duas entradas acima.
   "instagram_pending_posts",

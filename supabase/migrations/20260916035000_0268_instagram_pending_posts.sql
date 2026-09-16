@@ -1,4 +1,4 @@
--- 0266 · O rascunho de post do Instagram, esperando o lead confirmar.
+-- 0268 · O rascunho de post do Instagram, esperando o lead confirmar.
 --
 -- `crm_instagram_preparar_post` grava aqui (status='pending') sem publicar
 -- nada; só `crm_instagram_confirmar_post`, chamado num turno POSTERIOR depois

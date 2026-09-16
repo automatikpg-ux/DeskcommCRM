@@ -1,4 +1,4 @@
--- 0264 · Meta App por organização, pra publicar no Instagram em nome do lead.
+-- 0266 · Meta App por organização, pra publicar no Instagram em nome do lead.
 --
 -- ─── Por que organização, não instalação ────────────────────────────────────
 -- Mesmo raciocínio de `ad_platform_connections` (0213): o App pertence ao

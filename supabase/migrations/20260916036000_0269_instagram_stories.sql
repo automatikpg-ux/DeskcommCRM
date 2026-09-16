@@ -1,4 +1,4 @@
--- 0267 · Stories entra como terceiro destino do post preparado.
+-- 0269 · Stories entra como terceiro destino do post preparado.
 --
 -- Stories não tem legenda (a API do Instagram não aceita `caption` nesse
 -- destino) — a coluna `caption` continua `not null`, mas para stories o
