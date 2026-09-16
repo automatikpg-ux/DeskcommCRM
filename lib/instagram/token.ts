@@ -6,7 +6,7 @@
  */
 import type { InstagramApp } from "./apps";
 import {
-  ENDERECO_DE_PERFIL,
+  enderecoDePerfil,
   ENDERECO_DE_TOKEN_CURTO,
   ENDERECO_DE_TOKEN_LONGO,
   lerRespostaDePerfil,
@@ -83,7 +83,7 @@ export async function trocarTokenCurtoPorLongo(
 }
 
 export async function buscarPerfil(accessToken: string): Promise<LeituraDePerfil> {
-  const url = new URL(ENDERECO_DE_PERFIL);
+  const url = new URL(enderecoDePerfil());
   url.searchParams.set("fields", "id,username,account_type");
   url.searchParams.set("access_token", accessToken);
 
