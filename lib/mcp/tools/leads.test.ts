@@ -16,12 +16,20 @@
  * continuar sendo descartada, senão o teste passaria mesmo com o defeito de
  * volta, provando apenas que zod aceita objeto.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { updateLeadSchema } from "@/lib/schemas/leads";
+import type * as LeadsHandlerModule from "@/app/api/v1/leads/_handler";
 
-import { crmUpdateLead } from "./leads";
+vi.mock("@/app/api/v1/leads/_handler", async () => {
+  const real = await vi.importActual<typeof LeadsHandlerModule>("@/app/api/v1/leads/_handler");
+  return { ...real, listLeadsHandler: vi.fn() };
+});
+
+import { listLeadsHandler } from "@/app/api/v1/leads/_handler";
+import type { McpContext } from "../types";
+import { crmListLeads, crmUpdateLead } from "./leads";
 
 /** O mesmo caminho do handler: tira `lead_id`, entrega o resto ao schema. */
 function comoOHandlerFaz(entrada: Record<string, unknown>) {
@@ -78,5 +86,37 @@ describe("crm_update_lead — campos personalizados do funil", () => {
 
     expect(saida.tags).toEqual(["controlado"]);
     expect(saida.custom_fields).toBeUndefined();
+  });
+});
+
+/**
+ * O agente que atende (ex.: Ricardo, na Yadea) sabe o contact_id da conversa
+ * atual, nunca o lead_id de um negócio do funil — e antes disso não havia como
+ * ele achar "o negócio do cliente com quem estou falando" sem primeiro
+ * adivinhar ou perguntar o lead_id, algo que não existe no contexto que ele
+ * recebe. `contact_id` fecha essa lacuna: filtra pelo dono da conversa em vez
+ * de exigir um id que o modelo nunca teria de antemão.
+ */
+describe("crm_list_leads — filtra pelo contato da conversa", () => {
+  const CONTACT_ID = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+  const ctx = {
+    organizationId: "org-1",
+    role: "agent",
+    actor: { kind: "ai_agent", id: "agent-1" },
+    apiTokenId: "token-1",
+    requestId: "req-1",
+    supabase: {} as never,
+  } as unknown as McpContext;
+
+  it("repassa contact_id ao handler REST subjacente", async () => {
+    vi.mocked(listLeadsHandler).mockResolvedValue({ leads: [], cursor: null, has_more: false });
+
+    await crmListLeads.handler({ contact_id: CONTACT_ID, limit: 20 }, ctx);
+
+    expect(listLeadsHandler).toHaveBeenCalledWith(
+      ctx.supabase,
+      expect.objectContaining({ organization_id: ctx.organizationId }),
+      expect.objectContaining({ contact_id: CONTACT_ID }),
+    );
   });
 });

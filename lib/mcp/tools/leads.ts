@@ -75,6 +75,8 @@ const listInputShape = {
   stage_id: z.string().uuid().optional(),
   status: z.enum(["open", "won", "lost"]).optional(),
   owner_user_id: z.string().uuid().optional(),
+  /** O contato desta conversa (contact_id do contexto) — acha o(s) negócio(s) DELE, sem precisar saber o lead_id de antemão. */
+  contact_id: z.string().uuid().optional(),
   limit: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
 };
@@ -82,7 +84,8 @@ const listInputShape = {
 export const crmListLeads: McpToolDefinition<typeof listInputShape> = {
   name: "crm_list_leads",
   description:
-    "Lista leads do CRM filtrando por pipeline, stage, status e owner. Cursor base64 para paginação. " +
+    "Lista leads do CRM filtrando por pipeline, stage, status, owner e contato. Cursor base64 para paginação. " +
+    "Use contact_id (o contato desta conversa) para achar os negócios do cliente com quem você está falando, sem precisar do lead_id. " +
     "Governança por lead: owner_user_id + owner_user_name (só o nome do dono, sem email/telefone), stage ({ id, name } legível além do stage_id) e tags[].",
   inputSchema: listInputShape,
   category: "read",
@@ -101,6 +104,7 @@ export const crmListLeads: McpToolDefinition<typeof listInputShape> = {
         stage_id: input.stage_id,
         status: input.status,
         owner_user_id: input.owner_user_id,
+        contact_id: input.contact_id,
         limit: input.limit,
         cursor: input.cursor,
       },
