@@ -11,12 +11,7 @@
  * fica publicável quando `status_code` vira `FINISHED`; POST .../media_publish
  * com `creation_id` publica de fato.
  */
-import { graphVersion } from "@/lib/graph-version";
-
-/** A versão da Graph API tem um lugar só: `lib/graph-version.ts`. */
-function graphBase(): string {
-  return `https://graph.instagram.com/${graphVersion()}`;
-}
+const GRAPH_BASE = "https://graph.instagram.com/v21.0";
 const PRAZO_MS = 15_000;
 
 async function chamar(url: URL, init?: RequestInit): Promise<{ status: number; corpo: unknown }> {
@@ -47,7 +42,7 @@ export async function criarContainer(args: {
   /** Ignorada para `stories` — a API do Instagram não aceita legenda em story. */
   caption: string;
 }): Promise<ResultadoContainer> {
-  const url = new URL(`${graphBase()}/${args.igUserId}/media`);
+  const url = new URL(`${GRAPH_BASE}/${args.igUserId}/media`);
   const campos: Record<string, string> = { access_token: args.accessToken };
   if (args.destino !== "stories") campos.caption = args.caption;
   if (args.mediaTipo === "video") campos.video_url = args.mediaUrl;
@@ -82,7 +77,7 @@ export async function statusDoContainer(args: {
   containerId: string;
   accessToken: string;
 }): Promise<ResultadoStatus> {
-  const url = new URL(`${graphBase()}/${args.containerId}`);
+  const url = new URL(`${GRAPH_BASE}/${args.containerId}`);
   url.searchParams.set("fields", "status_code");
   url.searchParams.set("access_token", args.accessToken);
 
@@ -130,7 +125,7 @@ export async function publicarContainer(args: {
   containerId: string;
   accessToken: string;
 }): Promise<ResultadoPublicar> {
-  const url = new URL(`${graphBase()}/${args.igUserId}/media_publish`);
+  const url = new URL(`${GRAPH_BASE}/${args.igUserId}/media_publish`);
   const body = new URLSearchParams({
     creation_id: args.containerId,
     access_token: args.accessToken,
@@ -156,7 +151,7 @@ export async function permalinkDoMedia(args: {
   mediaId: string;
   accessToken: string;
 }): Promise<string | null> {
-  const url = new URL(`${graphBase()}/${args.mediaId}`);
+  const url = new URL(`${GRAPH_BASE}/${args.mediaId}`);
   url.searchParams.set("fields", "permalink");
   url.searchParams.set("access_token", args.accessToken);
 

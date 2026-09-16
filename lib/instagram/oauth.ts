@@ -1,5 +1,3 @@
-import { graphVersion } from "@/lib/graph-version";
-
 /**
  * A parte PURA do OAuth do Instagram: montar a URL de autorização e ler as
  * respostas de token. Sem rede aqui — isso mora em `token.ts`. Mesma divisão
@@ -9,11 +7,7 @@ import { graphVersion } from "@/lib/graph-version";
 export const ENDERECO_DE_AUTORIZACAO = "https://www.instagram.com/oauth/authorize";
 export const ENDERECO_DE_TOKEN_CURTO = "https://api.instagram.com/oauth/access_token";
 export const ENDERECO_DE_TOKEN_LONGO = "https://graph.instagram.com/access_token";
-
-/** A versão da Graph API tem um lugar só: `lib/graph-version.ts`. */
-export function enderecoDePerfil(): string {
-  return `https://graph.instagram.com/${graphVersion()}/me`;
-}
+export const ENDERECO_DE_PERFIL = "https://graph.instagram.com/v21.0/me";
 
 /**
  * `instagram_business_basic`: ler id/username/tipo de conta.
