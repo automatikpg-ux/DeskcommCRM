@@ -235,7 +235,7 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "`describe.each` da linha acima. Guarda o `gclid` de cada clique de " +
       "anúncio e o token que o liga à mensagem do WhatsApp.",
   },
-  // As duas entradas abaixo são do recurso de Instagram (migrations 0239/0240),
+  // As duas entradas abaixo são do recurso de Instagram (migrations 0264/0265),
   // não do eixo de Google Ads deste PR — encontradas pela MESMA varredura ao
   // rodar contra esta branch, e corrigidas de passagem porque o gate bloqueava
   // as duas mudanças juntas. O schema já nascia deny-all; só faltava a prova.

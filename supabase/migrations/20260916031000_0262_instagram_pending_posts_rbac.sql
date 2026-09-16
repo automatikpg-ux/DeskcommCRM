@@ -2,7 +2,7 @@
 -- (issue #150, forward-fix).
 --
 -- ─── O que isto fecha ────────────────────────────────────────────────────────
--- A migration 0241 deu à tabela `for all using (organization_id in
+-- A migration 0266 deu à tabela `for all using (organization_id in
 -- fn_user_org_ids()) with check (mesma coisa)` — isolamento de TENANT, sem
 -- isolamento de PAPEL. Depois da 0150 (que fechou a mesma lacuna em
 -- `channel_sessions`/`ai_agents`/etc.), `tests/invariants/rbac-config-ia-canais.test.ts`
@@ -18,7 +18,7 @@
 -- consequente (mesmo nível de `channel_sessions`/`tenant_integrations`), não
 -- uma decisão estrutural da organização (`user_organizations`/`lgpd_requests`,
 -- que pedem `admin`). A LEITURA continua sem gate de papel — o comentário
--- original da 0241 já dizia "quem administra a organização deve poder VER o
+-- original da 0266 já dizia "quem administra a organização deve poder VER o
 -- que está prestes a ser publicado", e nada aqui muda isso: só a ESCRITA some
 -- do alcance do `viewer`.
 --

@@ -141,7 +141,7 @@ describe("0150 — escrita de config de IA/canais exige admin", () => {
     ).toBe(1);
   });
 
-  // 0262 — forward-fix da 0241: instagram_pending_posts nasceu com policy de
+  // 0262 — forward-fix da 0266: instagram_pending_posts nasceu com policy de
   // escrita só-tenancy, sem gate de papel. Mesmo par negativo/positivo acima.
   it("viewer NÃO edita o rascunho de post do Instagram", () => {
     expect(
@@ -255,7 +255,7 @@ describe("0150 — a dívida de RBAC não cresce", () => {
       // formato: um `viewer` DELETAVA `ai_chunks` da própria organização
       // falando direto com o PostgREST, com o JWT dele.
       "ai_knowledge_sources", "ai_knowledge_versions", "ai_chunks", "ai_faq_items",
-      // 0262 — forward-fix da 0241, achada por esta própria varredura.
+      // 0262 — forward-fix da 0266, achada por esta própria varredura.
       "instagram_pending_posts",
     ];
     const semRole = sql(`

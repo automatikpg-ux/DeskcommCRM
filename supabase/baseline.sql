@@ -24875,7 +24875,7 @@ grant  execute on function public.fn_agenda_conexoes_google_do_dono(uuid, uuid) 
 
 notify pgrst, 'reload schema';
 
--- ---- Meta App por organização, pra publicar no Instagram (migration 0239) ----
+-- ---- Meta App por organização, pra publicar no Instagram (migration 0264) ----
 -- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
 -- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
 
@@ -24908,7 +24908,7 @@ comment on table public.instagram_apps is
 comment on column public.instagram_apps.app_secret_encrypted is
   'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de ad_platform_connections e calendar_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
 
--- ---- A conta do Instagram de cada lead, conectada (migration 0240) ----
+-- ---- A conta do Instagram de cada lead, conectada (migration 0265) ----
 -- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
 -- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
 
@@ -24950,7 +24950,7 @@ comment on table public.instagram_connections is
 comment on column public.instagram_connections.access_token_encrypted is
   'Cifrado por fn_encrypt_oauth (pgp_sym/aes256), a mesma cifra de instagram_apps e ad_platform_connections. Nunca gravar em claro: sem a chave mestra o save recusa.';
 
--- ---- O rascunho de post do Instagram, esperando confirmação (migration 0241) ----
+-- ---- O rascunho de post do Instagram, esperando confirmação (migration 0266) ----
 -- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
 -- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
 
@@ -24999,7 +24999,7 @@ create trigger trg_instagram_pending_posts_updated_at
 comment on table public.instagram_pending_posts is
   'Rascunho de post do Instagram esperando confirmação do lead antes de publicar (crm_instagram_preparar_post / crm_instagram_confirmar_post).';
 
--- ---- Stories entra como terceiro destino do post preparado (migration 0242) ----
+-- ---- Stories entra como terceiro destino do post preparado (migration 0267) ----
 -- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
 -- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
 
@@ -25010,7 +25010,7 @@ alter table public.instagram_pending_posts
   add constraint instagram_pending_posts_destino_check
   check (destino in ('feed', 'reels', 'stories'));
 
--- ---- Lista de teste de quem pode publicar no Instagram (migration 0243) ----
+-- ---- Lista de teste de quem pode publicar no Instagram (migration 0268) ----
 -- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
 -- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
 

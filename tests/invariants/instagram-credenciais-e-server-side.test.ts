@@ -13,7 +13,7 @@
  * `google_ads_landing_pages`/`google_ads_click_refs` cobrou, na mesma
  * varredura, prova para estas duas — dívida herdada do recurso de Instagram,
  * que nunca ganhou este teste. Não muda nada no schema: as duas tabelas já
- * nasceram deny-all nas migrations 0239/0240; só faltava a prova.
+ * nasceram deny-all nas migrations 0264/0265; só faltava a prova.
  */
 import { describe, expect, it } from "vitest";
 
