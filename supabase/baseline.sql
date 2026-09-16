@@ -24290,3 +24290,24 @@ create policy tenant_isolation_instagram_pending_posts_modify on public.instagra
     organization_id in (select * from public.fn_user_org_ids())
     and public.fn_role_at_least(organization_id, 'manager')
   );
+
+-- ---- Google Ads: credencial de conversão (migration 0254) ----
+-- Refresh token OAuth (não access token longo-vivo) + os três identificadores
+-- que dizem para onde reportar dentro da conta. Mesmo desenho server-side-only
+-- de ad_platform_connections (0213); ver o cabeçalho da migration 0254 para o
+-- racional completo.
+
+alter table public.ad_platform_connections
+  add column if not exists google_refresh_token_encrypted bytea,
+  add column if not exists google_customer_id text,
+  add column if not exists google_login_customer_id text,
+  add column if not exists google_conversion_action_id text;
+
+comment on column public.ad_platform_connections.google_refresh_token_encrypted is
+  'Refresh token OAuth do Google Ads, cifrado por fn_encrypt_oauth. Só platform=google_ads usa esta coluna — o access token derivado dele expira em ~1h e nunca é persistido.';
+comment on column public.ad_platform_connections.google_customer_id is
+  'A conta de anúncios do Google Ads (10 dígitos, sem hífen) para onde a organização reporta conversões.';
+comment on column public.ad_platform_connections.google_login_customer_id is
+  'A conta de GERENTE (MCC) através da qual google_customer_id é acessada, quando aplicável. NULL = acesso direto, sem MCC.';
+comment on column public.ad_platform_connections.google_conversion_action_id is
+  'Qual ação de conversão, dentro de google_customer_id, recebe os envios de venda. Formato: só o id numérico, o resource name completo é montado no transporte.';
