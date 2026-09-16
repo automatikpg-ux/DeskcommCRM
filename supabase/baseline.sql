@@ -26118,3 +26118,24 @@ drop trigger if exists trg_platform_meta_app_updated_at on public.platform_meta_
 create trigger trg_platform_meta_app_updated_at
   before update on public.platform_meta_app
   for each row execute function public.fn_set_updated_at();
+
+-- ---- Google Ads: credencial de conversão (migration 0263) ----
+-- Refresh token OAuth (não access token longo-vivo) + os três identificadores
+-- que dizem para onde reportar dentro da conta. Mesmo desenho server-side-only
+-- de ad_platform_connections (0213); ver o cabeçalho da migration 0263 para o
+-- racional completo.
+
+alter table public.ad_platform_connections
+  add column if not exists google_refresh_token_encrypted bytea,
+  add column if not exists google_customer_id text,
+  add column if not exists google_login_customer_id text,
+  add column if not exists google_conversion_action_id text;
+
+comment on column public.ad_platform_connections.google_refresh_token_encrypted is
+  'Refresh token OAuth do Google Ads, cifrado por fn_encrypt_oauth. Só platform=google_ads usa esta coluna — o access token derivado dele expira em ~1h e nunca é persistido.';
+comment on column public.ad_platform_connections.google_customer_id is
+  'A conta de anúncios do Google Ads (10 dígitos, sem hífen) para onde a organização reporta conversões.';
+comment on column public.ad_platform_connections.google_login_customer_id is
+  'A conta de GERENTE (MCC) através da qual google_customer_id é acessada, quando aplicável. NULL = acesso direto, sem MCC.';
+comment on column public.ad_platform_connections.google_conversion_action_id is
+  'Qual ação de conversão, dentro de google_customer_id, recebe os envios de venda. Formato: só o id numérico, o resource name completo é montado no transporte.';
