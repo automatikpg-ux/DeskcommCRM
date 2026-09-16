@@ -1,7 +1,7 @@
 /**
  * O Meta App da organização — App ID + Secret decifrado.
  *
- * Um por organização (`instagram_apps`, migration 0239, unique em
+ * Um por organização (`instagram_apps`, migration 0264, unique em
  * `organization_id`). Mesma cifra do resto do repo (`fn_encrypt_oauth`/
  * `fn_decrypt_oauth`, ver `lib/webhooks/secrets.ts`) — nunca um terceiro
  * caminho.

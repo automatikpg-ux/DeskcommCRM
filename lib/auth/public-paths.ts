@@ -15,7 +15,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/v1\/health$/,
   /^\/api\/v1\/webhooks\//,
   /^\/api\/v1\/cron\//,
-  // Landing page de captura de clique do Google Ads (migration 0252). Quem
+  // Landing page de captura de clique do Google Ads (migration 0261). Quem
   // chega aqui é o NAVEGADOR de quem clicou no anúncio — nunca tem, e não
   // pode ter, cookie de sessão nossa. Sem esta linha o proxy devolve 401
   // antes de a rota existir, e todo clique pago vira um erro em vez de um
@@ -43,6 +43,11 @@ export const PUBLIC_PATHS: RegExp[] = [
   // Ancorados com `$` de propósito — `/^\/api\/v1\/agenda\/google\// deixaria
   // qualquer sub-path futuro nascer público de carona.
   /^\/api\/v1\/agenda\/google\/callback$/,
+  // Volta do consentimento do Google Ads. Mesma natureza das duas linhas
+  // acima: a identidade vem do `state` assinado
+  // (`lib/plataformas-de-anuncio/google/estado.ts`), não da sessão — quem
+  // volta do Google não tem, e não pode ter, o cookie.
+  /^\/api\/v1\/plataformas-de-anuncio\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
   // Conexão do LEAD com o Instagram dele — quem chega aqui não é usuário
   // logado do CRM, é o lead clicando num link mandado pelo WhatsApp. A
@@ -62,6 +67,20 @@ export const PUBLIC_PATHS: RegExp[] = [
   // `GET` da listagem, não `/api/v1/contacts/[id]` nem `/import`, que ainda
   // não têm suporte a Bearer.
   /^\/api\/v1\/contacts$/,
+  // ENVIO SERVER-TO-SERVER. Mesma dualidade de `/api/v1/contacts` acima, com
+  // `mcp:write` em vez de `mcp:read`: sessão de navegador OU Bearer `dsk_…`,
+  // resolvidos por `lib/api/auth-dual.ts` DENTRO de cada rota, com a org saindo
+  // da linha do token e nunca do corpo. Existem porque quem envia por aqui não
+  // tem navegador: o gateway do CRM em absorção e integrações de servidor.
+  //
+  // Ancoradas com `$` de propósito. `/^\/api\/v1\/messages/` sem âncora daria
+  // carona a `/api/v1/messages/[id]`, que NÃO tem suporte a Bearer.
+  /^\/api\/v1\/messages$/,
+  /^\/api\/v1\/conversations\/open-with-contact$/,
+  // Upload outbound: primeiro passo do envio de MÍDIA por token. Sem ele, o
+  // cartão de fidelidade (a única das automações que não é texto) não teria
+  // como sair depois do corte de gateway.
+  /^\/api\/v1\/conversations\/[^/]+\/media$/,
   /^\/_next\//,
   /^\/favicon\.ico$/,
   // O ícone da aba (`app/icon.tsx`), que o `<head>` de TODA página pede —
