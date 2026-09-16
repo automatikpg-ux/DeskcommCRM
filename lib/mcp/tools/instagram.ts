@@ -57,7 +57,7 @@ async function contatoDaConversa(
 
 /**
  * A trava de "lista de teste" — mesmo raciocínio do pré-go-live do WhatsApp
- * (migration 0243). Lança `instagram_indisponivel_para_este_contato` para
+ * (migration 0268). Lança `instagram_indisponivel_para_este_contato` para
  * QUALQUER contato fora da lista, nas três tools igualmente: enquanto a
  * organização tiver uma lista configurada, ninguém fora dela alcança
  * conectar, preparar OU confirmar — o número do agente é compartilhado, e
