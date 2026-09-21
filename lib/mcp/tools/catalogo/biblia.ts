@@ -16,6 +16,13 @@ export const TOOLS_BIBLIA = declararTools([
       "configurada, em vez de o assistente citar de memória e arriscar errar.",
     oQueToca: "Base de conhecimento",
     risco: "seguro",
-    pacotes: ["atender"],
+    // FORA de "atender" de propósito, não por falta de encaixe — mesma razão
+    // documentada em `lib/mcp/tools/catalogo/atendimento.ts` (a capacidade que
+    // NÃO entrou lá): "atender" já é o pacote mais carregado (18 vagas), quase
+    // o teto inteiro por agente, e outra capacidade ali é ela quem encosta no
+    // teto primeiro. Fica em "evoluir" — mesma categoria de
+    // `crm_search_knowledge`, o parente mais próximo — e continua alcançável
+    // em qualquer jornada pelo modo avançado.
+    pacotes: ["evoluir"],
   },
 ]);
