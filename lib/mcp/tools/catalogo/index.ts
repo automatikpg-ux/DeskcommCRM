@@ -15,6 +15,7 @@
  */
 import { TOOLS_AGENDAMENTO } from "./agendamento";
 import { TOOLS_ATENDIMENTO } from "./atendimento";
+import { TOOLS_BIBLIA } from "./biblia";
 import { TOOLS_COMERCIO } from "./comercio";
 import { TOOLS_EVOLUCAO } from "./evolucao";
 import { TOOLS_ESCALACAO } from "./escalacao";
@@ -31,6 +32,7 @@ export { declararTools } from "./tipos";
 export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_AGENDAMENTO,
   ...TOOLS_ATENDIMENTO,
+  ...TOOLS_BIBLIA,
   ...TOOLS_ESCALACAO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,

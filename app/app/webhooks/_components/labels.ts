@@ -20,6 +20,9 @@ export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
   "message.received": "Quando chegar mensagem no WhatsApp",
   "lead.tag_added": "Quando um lead ganhar uma tag",
   "contact.tag_added": "Quando um contato ganhar uma tag",
+  // Nasce do cron `palavra-do-dia`, uma vez por dia por organização — igual ao
+  // aniversário e à data do funil, e não de uma ação de alguém.
+  "palavra_do_dia.pronta": "Todo dia, na Palavra do Dia",
 };
 
 export const ACTION_LABELS: Record<ActionType, string> = {
