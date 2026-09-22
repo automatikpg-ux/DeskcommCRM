@@ -46,6 +46,7 @@ import {
   crmSaveOrgMemory,
 } from "./evolucao";
 import { crmListContactOrders, crmSearchProducts } from "./comercio";
+import { crmFindNearestLocation } from "./localizacao";
 import { crmListPrivacyRequests } from "./privacidade";
 import {
   crmArchiveStage,
@@ -117,6 +118,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListContactOrders,
   crmSearchProducts,
   crmListPrivacyRequests,
+  crmFindNearestLocation,
   // read — organizar a operação (W4)
   crmListStages,
   crmListTags,
