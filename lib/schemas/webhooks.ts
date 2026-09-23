@@ -11,6 +11,13 @@ export const TRIGGER_EVENTS = [
   "message.received",
   "lead.tag_added",
   "contact.tag_added",
+  // A PALAVRA DO DIA nasce do relógio: quem o emite é a varredura
+  // `cron/palavra-do-dia`, uma vez por organização por dia local, e a
+  // entidade que ele traz é o NEGÓCIO (crm_lead) de cada membro ativo — o
+  // texto do versículo já vem pronto no payload do evento (referência, texto,
+  // versão), então a regra de automação só precisa de um template com
+  // `{{event.referencia}}` / `{{event.texto}}`.
+  "palavra_do_dia.pronta",
 ] as const;
 
 export const conditionSchema = z.object({

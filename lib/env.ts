@@ -196,6 +196,18 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   OPENAI_API_KEY: z.string().optional().default(""),
 
+  // Fonte de conteúdo do cron `palavra-do-dia` (lib/palavra-do-dia/youversion.ts)
+  // e da busca de versículo sob demanda (crm_search_bible_verse). Vazio = a org
+  // com regra ativa desse gatilho é pulada na rodada (log, não exceção); a
+  // ferramenta de busca avisa que falta a chave em vez de travar.
+  YOUVERSION_API_KEY: z.string().optional().default(""),
+  YOUVERSION_API_BASE_URL: z.string().optional().default(""),
+  // Id numérico da tradução na YouVersion (129 = NVI pt-BR, confirmado via
+  // GET /bibles?language_ranges[]=por) e o rótulo mostrado no template da
+  // mensagem — os dois têm default e não precisam ser preenchidos para NVI.
+  YOUVERSION_BIBLE_ID: z.string().optional().default(""),
+  YOUVERSION_VERSAO_LABEL: z.string().optional().default(""),
+
   // Fusão (Fase 4): DONO ÚNICO dos eventos ai_agent.dispatch_requested.
   // 'engine' (default) = o worker agent-engine é o único consumidor (o cron
   // agent-dispatcher vira no-op mecânico); 'native' = o dispatcher EPIC-13

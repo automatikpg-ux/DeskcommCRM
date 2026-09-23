@@ -81,6 +81,10 @@ CRONS="
 # confirmado, futuro e ainda não avisado.
 */5 * * * *|45|api/v1/cron/agenda-reminder
 */15 * * * *|60|api/v1/cron/risk-watcher
+# A PALAVRA DO DIA. De hora em hora, mesma régua do aniversário e da data do
+# funil: só age na organização cujo relógio de parede marca 07h. Uma chamada à
+# YouVersion por organização por dia, nunca por membro — ver o cabeçalho da rota.
+37 * * * *|60|api/v1/cron/palavra-do-dia
 */30 * * * *|60|api/v1/cron/contact-phones
 17 * * * *|60|api/v1/cron/contact-proposals-watcher
 0 12 * * *|60|api/v1/cron/lgpd-sla-watcher

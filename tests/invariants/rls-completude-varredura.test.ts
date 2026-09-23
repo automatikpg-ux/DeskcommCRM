@@ -240,6 +240,14 @@ const PROVA_PROPRIA: readonly Excecao[] = [
   // rodar contra esta branch, e corrigidas de passagem porque o gate bloqueava
   // as duas mudanças juntas. O schema já nascia deny-all; só faltava a prova.
   {
+    tabela: "crm_locations",
+    razao:
+      "tests/invariants/localizacao-e-server-side.test.ts — mesmo desenho " +
+      "deny-all de instagram_apps (migration 0255): RLS ligada, zero policies, " +
+      "grants revogados de anon/authenticated. Guarda endereço e coordenadas " +
+      "das unidades; só o servidor lê, filtrando organization_id à mão.",
+  },
+  {
     tabela: "instagram_apps",
     razao:
       "tests/invariants/instagram-credenciais-e-server-side.test.ts — mesmo " +

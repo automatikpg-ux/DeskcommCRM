@@ -84,6 +84,9 @@ const CURATED_FIELDS: Record<TriggerEvent, CuratedField[]> = {
   "message.received": MESSAGE_FIELDS,
   "lead.tag_added": [...LEAD_FIELDS, TAG_ADDED_FIELD],
   "contact.tag_added": [TAG_ADDED_FIELD],
+  // Dispara sobre o NEGÓCIO (o membro do dia), então as condições são as do
+  // lead — "só quem está em Membro Ativo", tipicamente.
+  "palavra_do_dia.pronta": LEAD_FIELDS,
 };
 
 const OP_LABELS: Record<Op, string> = { eq: "é", neq: "não é", contains: "contém" };

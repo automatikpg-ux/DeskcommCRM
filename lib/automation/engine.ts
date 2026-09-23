@@ -30,6 +30,7 @@ const EXPECTED_ENTITY_KIND: Record<string, string> = {
   "lead.tag_added": "crm_lead",
   "contact.tag_added": "contact",
   "message.received": "message",
+  "palavra_do_dia.pronta": "crm_lead",
 };
 
 interface RuleRow {

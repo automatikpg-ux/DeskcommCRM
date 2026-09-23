@@ -15,12 +15,14 @@
  */
 import { TOOLS_AGENDAMENTO } from "./agendamento";
 import { TOOLS_ATENDIMENTO } from "./atendimento";
+import { TOOLS_BIBLIA } from "./biblia";
 import { TOOLS_COMERCIO } from "./comercio";
 import { TOOLS_EVOLUCAO } from "./evolucao";
 import { TOOLS_ESCALACAO } from "./escalacao";
 import { TOOLS_FUNIL } from "./funil";
 import { TOOLS_GOVERNANCA } from "./governanca";
 import { TOOLS_INSTAGRAM } from "./instagram";
+import { TOOLS_LOCALIZACAO } from "./localizacao";
 import { TOOLS_OPERACAO } from "./operacao";
 import { TOOLS_RETENCAO } from "./retencao";
 import type { McpToolCatalogEntry } from "./tipos";
@@ -31,11 +33,13 @@ export { declararTools } from "./tipos";
 export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_AGENDAMENTO,
   ...TOOLS_ATENDIMENTO,
+  ...TOOLS_BIBLIA,
   ...TOOLS_ESCALACAO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,
   ...TOOLS_EVOLUCAO,
   ...TOOLS_COMERCIO,
+  ...TOOLS_LOCALIZACAO,
   ...TOOLS_OPERACAO,
   ...TOOLS_RETENCAO,
   ...TOOLS_INSTAGRAM,

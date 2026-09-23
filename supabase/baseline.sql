@@ -24311,3 +24311,43 @@ comment on column public.ad_platform_connections.google_login_customer_id is
   'A conta de GERENTE (MCC) através da qual google_customer_id é acessada, quando aplicável. NULL = acesso direto, sem MCC.';
 comment on column public.ad_platform_connections.google_conversion_action_id is
   'Qual ação de conversão, dentro de google_customer_id, recebe os envios de venda. Formato: só o id numérico, o resource name completo é montado no transporte.';
+
+-- ---- Unidades/células físicas da organização, para localizar a mais perto de um CEP (migration 0255) ----
+-- Idempotente e auto-curativo, como o kit exige: `update.sh` re-aplica este
+-- arquivo inteiro num banco existente e sem `ON_ERROR_STOP`.
+
+create table if not exists public.crm_locations (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+
+  name text not null,
+  cep text not null,
+  address text,
+  lat double precision,
+  lng double precision,
+  geocoded_at timestamptz,
+
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint crm_locations_cep_format check (cep ~ '^[0-9]{8}$')
+);
+
+create index if not exists idx_crm_locations_org_active
+  on public.crm_locations (organization_id)
+  where is_active;
+
+alter table public.crm_locations enable row level security;
+revoke all on public.crm_locations from anon, authenticated;
+grant select, insert, update, delete on public.crm_locations to service_role;
+
+drop trigger if exists trg_crm_locations_updated_at on public.crm_locations;
+create trigger trg_crm_locations_updated_at
+  before update on public.crm_locations
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.crm_locations is
+  'Unidades/filiais físicas da organização (nome + CEP + coordenadas cacheadas), usadas para localizar a mais próxima de um CEP informado pelo lead. Server-only: RLS ligada sem policies, só service_role.';
+comment on column public.crm_locations.geocoded_at is
+  'Quando lat/lng foi resolvido a partir do CEP (API pública de geocoding). Null = ainda não geocodificada ou o CEP falhou a resolver — o cálculo de distância ignora a linha até isto ser preenchido.';
