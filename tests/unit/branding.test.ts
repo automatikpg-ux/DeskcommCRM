@@ -239,6 +239,12 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
       "`X-Client-Info` enviado ao Supabase — identifica o cliente nos logs e na telemetria DELES. Não é texto de interface e nunca chega ao usuário",
     marcas: ["deskcomm-crm"],
   },
+  "lib/localizacao/geocoding.ts": {
+    categoria: "PROTOCOLO",
+    motivo:
+      "User-Agent enviado ao Nominatim (OpenStreetMap), cuja política de uso exige um UA estável que identifique a aplicação e um contato. Trocar pelo nome do revendedor por instalação espalharia o tráfego por identidades que o OSM não consegue associar a quem responde por elas",
+    marcas: ["deskcommcrm", "deskcommcrm-geoagent"],
+  },
   "lib/wacalls/events-bridge.ts": {
     categoria: "PROTOCOLO",
     motivo:

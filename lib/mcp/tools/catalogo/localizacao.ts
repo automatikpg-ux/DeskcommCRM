@@ -15,6 +15,11 @@ export const TOOLS_LOCALIZACAO = declararTools([
       "e responde qual fica mais perto — sem inventar proximidade quando não há unidade cadastrada.",
     oQueToca: "Unidades da organização",
     risco: "seguro",
-    pacotes: ["atender"],
+    // FORA de "atender" pelo mesmo motivo de `crm_search_bible_verse`
+    // (`catalogo/biblia.ts`): "atender" já encosta no teto de capacidades por
+    // agente, e uma vaga a mais ali faz o pacote inteiro ser recusado. Fica em
+    // "evoluir" — consultar o que a organização já cadastrou — e continua
+    // alcançável em qualquer jornada pelo modo avançado.
+    pacotes: ["evoluir"],
   },
 ]);
