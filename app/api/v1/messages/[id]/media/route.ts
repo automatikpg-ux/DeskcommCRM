@@ -1,7 +1,8 @@
 // app/api/v1/messages/[id]/media/route.ts
 /**
  * GET /api/v1/messages/[id]/media — acesso autenticado à mídia da mensagem.
- * Persistida → 302 pra signed URL (TTL 1h) do bucket whatsapp-media.
+ * Persistida → bytes do bucket whatsapp-media servidos por esta URL estável,
+ * com cache `immutable` no navegador (302 pra signed URL só se o fetch falhar).
  * Ainda não persistida (janela até o worker rodar) → proxy dos bytes do WAHA.
  * A URL desta rota é usada diretamente como src de <img>/<video>/<audio>
  * (cookie de sessão vai junto por ser same-origin; RLS decide o acesso).
@@ -31,7 +32,7 @@ interface RouteCtx {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
+export async function GET(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id: messageId } = await ctx.params;
   const supabase = await createClient();
@@ -71,6 +72,42 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       .from("whatsapp-media")
       .createSignedUrl(msg.media_storage_path, SIGNED_URL_TTL_S);
     if (!signErr && signed?.signedUrl) {
+      // ── Por que proxy, e não mais o 302 ──────────────────────────────────
+      //
+      // O 302 apontava para uma signed URL com token NOVO a cada pedido. URL
+      // nova = cache do navegador sempre vazio: toda abertura de conversa
+      // baixava de novo cada foto/áudio/PDF direto do Storage, e isso é egress
+      // do Supabase. Medido em 2026-10-02: o projeto estourou a cota de egress
+      // do plano com ~1,2 GB de mídia sendo rebaixada o dia inteiro.
+      //
+      // Servindo os bytes por ESTA URL (estável: o id da mensagem) com
+      // `immutable`, cada navegador baixa cada arquivo uma vez. O arquivo de uma
+      // mensagem persistida não muda — o caminho no bucket é por mensagem.
+      // `private`: a autorização acima é por usuário; proxy compartilhado não
+      // guarda. `Range` é repassado porque <audio>/<video> pedem pedaços (o
+      // Safari não toca vídeo sem 206).
+      const range = req.headers.get("range");
+      const upstream = await fetch(signed.signedUrl, {
+        headers: range ? { Range: range } : undefined,
+      }).catch(() => null);
+      if (upstream && (upstream.ok || upstream.status === 206) && upstream.body) {
+        const headers = new Headers({
+          "Content-Type": upstream.headers.get("content-type") ?? msg.media_mime ?? "application/octet-stream",
+          "Cache-Control": "private, max-age=31536000, immutable",
+          "Accept-Ranges": "bytes",
+          "X-Request-Id": requestId,
+        });
+        for (const h of ["content-length", "content-range", "etag", "last-modified"]) {
+          const v = upstream.headers.get(h);
+          if (v) headers.set(h, v);
+        }
+        return new Response(upstream.body, { status: upstream.status, headers });
+      }
+      if (upstream && upstream.status === 416) {
+        return new Response(null, { status: 416, headers: { "X-Request-Id": requestId } });
+      }
+      // Falha ao buscar no Storage: o 302 antigo continua sendo um caminho
+      // válido — o navegador tenta direto, sem cache, como antes.
       const response = NextResponse.redirect(signed.signedUrl, 302);
       response.headers.set("X-Request-Id", requestId);
       return response;
