@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
 import { emitLeadActivity, stageChangeReason } from "@/lib/leads/activity-emitter";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
+import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
 
 /**
  * Move o card do lead para a etapa do funil que o tenant marcou como destino
@@ -208,4 +209,59 @@ export async function moverLeadParaEtapaDeHandoff(
   }
 
   return { moveu: true, motivo: "movido" };
+}
+
+/**
+ * Mesma coisa que `moverLeadParaEtapaDeHandoff`, a partir do CONTATO.
+ *
+ * O motor de conversa trata "lead" como o contato (`inbound-turn.ts`:
+ * `leadId = contact_id`) — passar esse id direto para a função acima casa
+ * `crm_leads.id` com um id de contato e dá sempre `lead_nao_encontrado`: o card
+ * nunca se mexia. Aqui o negócio é escolhido pela mesma regra que roteia a
+ * atividade do agente (`resolveActiveLeadForContact`): ambíguo ou inexistente
+ * não move nada.
+ */
+export async function moverEtapaDeHandoffPorContato(
+  admin: SupabaseClient,
+  input: {
+    organizationId: string;
+    contactId: string;
+    reason: string;
+    serviceBoundary?: ServiceBoundary;
+  },
+): Promise<ResultadoDoMovimentoDeHandoff> {
+  const [{ data: leads, error: erroLeads }, { data: padrao }] = await Promise.all([
+    admin
+      .from("crm_leads")
+      .select("id, organization_id, pipeline_id, status, last_activity_at, created_at")
+      .eq("organization_id", input.organizationId)
+      .eq("contact_id", input.contactId),
+    admin
+      .from("crm_pipelines")
+      .select("id")
+      .eq("organization_id", input.organizationId)
+      .eq("is_default", true)
+      .eq("is_archived", false)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (erroLeads) {
+    logger.warn("[handoff-stage-move] leitura dos negócios do contato falhou", {
+      organization_id: input.organizationId,
+      error: erroLeads.message,
+    });
+    return { moveu: false, motivo: "indisponivel" };
+  }
+  const alvo = resolveActiveLeadForContact((leads ?? []) as LeadCandidate[], {
+    defaultPipelineId: (padrao as { id: string } | null)?.id ?? null,
+  });
+  if (!alvo.routed) {
+    return { moveu: false, motivo: "lead_nao_encontrado" };
+  }
+  return moverLeadParaEtapaDeHandoff(admin, {
+    organizationId: input.organizationId,
+    leadId: alvo.leadId,
+    reason: input.reason,
+    serviceBoundary: input.serviceBoundary,
+  });
 }

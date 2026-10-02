@@ -45,6 +45,8 @@ import { traduzir } from '@/lib/i18n/dicionario';
 import { normalizarIdioma, type Idioma } from '@/lib/i18n/idiomas';
 import { ehOptOutProvavel } from '@/lib/opt-out/deteccao';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
+import { moverLeadParaEtapaDeHandoff } from '@/lib/leads/handoff-stage-move';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 import type { DesfechoDoAviso } from './aviso-de-escalacao';
 
@@ -283,6 +285,7 @@ export async function performHumanHandoff(
   //
   // Try/catch porque a timeline não pode derrubar a operação que ela descreve —
   // mesma disciplina fire-and-forget do emissor da API.
+  let negocioId: string | null = null;
   try {
     const roteou = await emitAgentActivityForContact({
       pool: db,
@@ -296,11 +299,40 @@ export async function performHumanHandoff(
     });
     if (!roteou.routed) {
       opts.log.warn('handoff: atividade não roteada para um negócio', { reason: roteou.reason });
+    } else {
+      negocioId = roteou.leadId;
     }
   } catch (err) {
     opts.log.warn('handoff: atividade da passagem não foi gravada', {
       error: err instanceof Error ? err.message.slice(0, 200) : 'erro desconhecido',
     });
+  }
+
+  // (f) O CARD vai para a etapa `chamar-humano` do funil, quando o tenant tem
+  // uma. Só o handoff por palavra-chave (`triggerHandoff`) e o `open_human_case`
+  // moviam o card; a passagem decidida pelo modelo (`request_human_handoff`),
+  // o pedido explícito, o opt-out suspeito e o teto de gasto passavam por aqui
+  // e deixavam o card parado em "Primeiro contato" com a conversa já na fila
+  // humana. O negócio é o MESMO que a atividade acima escolheu — nada de
+  // segunda regra de roteamento. Best-effort: a passagem já aconteceu.
+  //
+  // O motivo é o código canônico, não `opts.reason` (texto livre, vai para a
+  // timeline e o export de LGPD — mesma regra do item (e)).
+  if (negocioId !== null) {
+    try {
+      const movimento = await moverLeadParaEtapaDeHandoff(createAdminClient(), {
+        organizationId: ids.tenantId,
+        leadId: negocioId,
+        reason: opts.passagem?.motivoCodigo ?? 'handoff_humano',
+      });
+      if (!movimento.moveu && movimento.motivo !== 'sem_etapa_de_handoff' && movimento.motivo !== 'ja_esta_la') {
+        opts.log.warn('handoff: card não foi para a etapa de handoff', { motivo: movimento.motivo });
+      }
+    } catch (err) {
+      opts.log.warn('handoff: mover o card para a etapa de handoff falhou', {
+        error: err instanceof Error ? err.message.slice(0, 200) : 'erro desconhecido',
+      });
+    }
   }
 
   // PII fora do log — e agora de verdade. A linha anterior logava `opts.reason`,

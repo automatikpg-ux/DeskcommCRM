@@ -67,7 +67,7 @@ import { HANDOFF_REASON_ORCAMENTO } from '../edge/llm/orcamento';
 import { abreAvisoDoEspelhoRecusado, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
 import { insertInboxItem } from '../db/repository';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { moverLeadParaEtapaDeHandoff } from '@/lib/leads/handoff-stage-move';
+import { moverEtapaDeHandoffPorContato } from '@/lib/leads/handoff-stage-move';
 import { detectUrgencySignal } from '../guardrails/sinal-de-urgencia';
 import { buildNativeMediaParts } from './media-parts';
 import {
@@ -2597,12 +2597,13 @@ async function executarTurnoDoAgente(
   // Nunca bloqueia nem derruba o turno — mesma disciplina de `triggerHandoff` (G1-G4),
   // que já chama o mesmo helper para o handoff por palavra-chave do cliente.
   const moverParaHandoffBestEffort = (reason: string): void => {
-    moverLeadParaEtapaDeHandoff(createAdminClient(), {
+    // `leadId` aqui é o CONTATO — o helper resolve o negócio dele.
+    moverEtapaDeHandoffPorContato(createAdminClient(), {
       organizationId: tenantId,
-      leadId,
+      contactId: leadId,
       reason,
     }).catch((err) => {
-      runLog.warn('moverLeadParaEtapaDeHandoff falhou (best-effort, caso humano)', {
+      runLog.warn('moverEtapaDeHandoffPorContato falhou (best-effort, caso humano)', {
         error: err instanceof Error ? err.message : String(err),
       });
     });

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
-import { moverLeadParaEtapaDeHandoff, SLUG_ETAPA_HANDOFF } from "@/lib/leads/handoff-stage-move";
+import {
+  moverEtapaDeHandoffPorContato,
+  moverLeadParaEtapaDeHandoff,
+  SLUG_ETAPA_HANDOFF,
+} from "@/lib/leads/handoff-stage-move";
 
 vi.mock("@/lib/leads/activity-emitter", async (orig) => ({
   ...(await orig<typeof import("@/lib/leads/activity-emitter")>()),
@@ -234,4 +238,76 @@ it("erro de banco na busca pelo slug legado é indisponibilidade, não 'sem_etap
   });
   const r = await mover(c);
   expect(r).toEqual({ moveu: false, motivo: "indisponivel" });
+});
+
+/**
+ * O motor de conversa chama com o id do CONTATO (`leadId = contact_id` no
+ * harness). Antes, esse id ia direto como `crm_leads.id` e o card nunca se
+ * mexia. O fake devolve a lista de negócios do contato quando a consulta filtra
+ * por `contact_id`, e o resto segue o fake do `moverLeadParaEtapaDeHandoff`.
+ */
+function fakeAdminPorContato(c: Cenario, negocios: unknown[], consultas: string[][] = []) {
+  const base = fakeAdmin(c);
+  return {
+    rpc: base.rpc,
+    from(tabela: string) {
+      const b = base.from(tabela);
+      const eqOriginal = b.eq;
+      b.limit = () => b;
+      b.eq = (key: string, val?: unknown) => {
+        eqOriginal(key, val);
+        return b;
+      };
+      const maybeSingleOriginal = b.maybeSingle;
+      b.maybeSingle = () => {
+        if (tabela === "crm_pipelines") return Promise.resolve({ data: { id: "pipe-1" }, error: null });
+        if (tabela === "crm_leads") consultas.push([...b._eqKeys]);
+        return maybeSingleOriginal();
+      };
+      const thenOriginal = b.then;
+      b.then = (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) => {
+        if (tabela === "crm_leads" && b._eqKeys.includes("contact_id")) {
+          consultas.push([...b._eqKeys]);
+          return Promise.resolve({ data: negocios, error: null }).then(onF, onR);
+        }
+        return thenOriginal(onF, onR);
+      };
+      return b;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
+
+const NEGOCIO_ABERTO = {
+  id: LEAD.id,
+  organization_id: ORG,
+  pipeline_id: "pipe-1",
+  status: "open",
+  last_activity_at: null,
+  created_at: "2026-10-02T19:50:32Z",
+};
+
+describe("moverEtapaDeHandoffPorContato", () => {
+  beforeEach(() => vi.mocked(emitLeadActivity).mockClear());
+
+  it("resolve o negócio aberto do contato e move o card", async () => {
+    const consultas: string[][] = [];
+    const r = await moverEtapaDeHandoffPorContato(fakeAdminPorContato(cenario(), [NEGOCIO_ABERTO], consultas), {
+      organizationId: ORG,
+      contactId: "contato-1",
+      reason: "open_human_case",
+    });
+    expect(r).toEqual({ moveu: true, motivo: "movido" });
+    // a primeira consulta em crm_leads filtra pelo CONTATO, não usa o id dele como lead
+    expect(consultas[0]).toContain("contact_id");
+  });
+
+  it("contato sem negócio aberto: não move nada", async () => {
+    const r = await moverEtapaDeHandoffPorContato(
+      fakeAdminPorContato(cenario(), [{ ...NEGOCIO_ABERTO, status: "won" }]),
+      { organizationId: ORG, contactId: "contato-1", reason: "open_human_case" },
+    );
+    expect(r).toEqual({ moveu: false, motivo: "lead_nao_encontrado" });
+    expect(vi.mocked(emitLeadActivity)).not.toHaveBeenCalled();
+  });
 });
