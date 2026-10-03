@@ -186,7 +186,15 @@ export function textoDoAviso(
   motivo: MotivoDoAviso,
   quem: QuemPodeAssumir | null,
   leadId: string,
+  personalizado: readonly string[] | null = null,
 ): string {
+  // O texto da org, quando existe, substitui abertura E fecho: ele é a frase
+  // inteira, escrita por quem conhece a casa ("vou passar pro Felipe"). Não vale
+  // para opt-out — quem pediu para parar não quer ouvir sobre atendente.
+  if (personalizado !== null && personalizado.length > 0 && motivo !== "suspeita_de_opt_out") {
+    return variante(leadId, personalizado);
+  }
+
   const abertura = variante(leadId, ABERTURAS[motivo]);
 
   if (motivo === "suspeita_de_opt_out") {
@@ -204,4 +212,32 @@ export function textoDoAviso(
         : variante(leadId, FECHOS.com_equipe);
 
   return `${abertura} ${fecho}`;
+}
+
+/**
+ * ═══ O TEXTO DA CASA: `organizations.settings.aviso_de_handoff` ═══
+ *
+ * A frase genérica ("passei para um atendente humano… não há atendente
+ * disponível") está certa para uma central com fila, e errada para um negócio
+ * de uma pessoa só: o estúdio em que o cliente chama o dono pelo apelido leu
+ * "atendente humano" quando esperava "o Felipe". A passagem por palavra-chave
+ * roda SEM modelo, então a frase do prompt nunca chega a sair — o único lugar
+ * para o texto da casa é aqui.
+ *
+ * Aceita uma string ou uma lista (variantes, sorteadas pelo mesmo hash do lead).
+ * Qualquer coisa fora disso — ausente, vazio, tipo errado — vira `null`, e o
+ * texto padrão continua valendo: configuração malformada nunca vira silêncio.
+ */
+export const LIMITE_DO_AVISO_PERSONALIZADO = 500;
+
+export function avisoPersonalizadoDaOrg(settings: unknown): string[] | null {
+  if (settings === null || typeof settings !== "object") return null;
+  const bruto = (settings as Record<string, unknown>)["aviso_de_handoff"];
+  const lista = typeof bruto === "string" ? [bruto] : Array.isArray(bruto) ? bruto : [];
+  const textos = lista
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && t.length <= LIMITE_DO_AVISO_PERSONALIZADO)
+    .slice(0, 5);
+  return textos.length > 0 ? textos : null;
 }

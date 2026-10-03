@@ -24,6 +24,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  avisoPersonalizadoDaOrg,
   motivoDoAviso,
   textoDoAviso,
   type MotivoDoAviso,
@@ -199,5 +200,31 @@ describe("a conta do spinning — por que o gate é desarmado para o aviso", () 
     for (const m of MOTIVOS) {
       expect(vetadosComOGateArmado(m, null, 20), m).toBeGreaterThan(5);
     }
+  });
+});
+
+describe("texto da casa (organizations.settings.aviso_de_handoff)", () => {
+  const FELIPE = "Vou passar sua conversa pro Felipe, ele segue com você por aqui.";
+
+  it("substitui a frase inteira (abertura e fecho) quando a org configurou", () => {
+    for (const motivo of ["pediu_humano", "orcamento_de_ia", "outro"] as const) {
+      expect(textoDoAviso(motivo, { disponiveis: 0, total: 1 }, LEAD, [FELIPE])).toBe(FELIPE);
+    }
+  });
+
+  it("nunca vale para quem pediu para parar", () => {
+    expect(textoDoAviso("suspeita_de_opt_out", null, LEAD, [FELIPE])).not.toContain("Felipe");
+  });
+
+  it("aceita string ou lista e descarta o malformado (volta ao padrão)", () => {
+    expect(avisoPersonalizadoDaOrg({ aviso_de_handoff: `  ${FELIPE} ` })).toEqual([FELIPE]);
+    expect(avisoPersonalizadoDaOrg({ aviso_de_handoff: [FELIPE, "", 3, "Outra."] })).toEqual([
+      FELIPE,
+      "Outra.",
+    ]);
+    expect(avisoPersonalizadoDaOrg({ aviso_de_handoff: "   " })).toBeNull();
+    expect(avisoPersonalizadoDaOrg({ aviso_de_handoff: 42 })).toBeNull();
+    expect(avisoPersonalizadoDaOrg({})).toBeNull();
+    expect(avisoPersonalizadoDaOrg(null)).toBeNull();
   });
 });

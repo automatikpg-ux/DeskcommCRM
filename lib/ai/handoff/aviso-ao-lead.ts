@@ -43,7 +43,11 @@ import type { ServiceBoundary } from "@/lib/atendimento/fronteira";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
-import { motivoDoAviso, textoDoAviso } from "@/lib/escalacao/aviso-ao-lead";
+import {
+  avisoPersonalizadoDaOrg,
+  motivoDoAviso,
+  textoDoAviso,
+} from "@/lib/escalacao/aviso-ao-lead";
 import { carregarRosterDeAtendimento, podeAssumirAgora } from "@/lib/escalacao/atendentes";
 // Dois `MotivoDoAviso` no repositório: o de `escalacao/aviso-ao-lead` diz QUE
 // FRASE o cliente lê; este diz POR QUE ele não leu nada. O apelido impede a
@@ -110,6 +114,7 @@ export async function avisarLeadDoCrm(
       motivoDoAviso(input.reason),
       await quemPodeAssumir(admin, input.organizationId),
       input.contactId,
+      await avisoPersonalizado(admin, input.organizationId),
     );
     const mensagem = await sendMessageHandler(
       admin,
@@ -156,6 +161,31 @@ export async function avisarLeadDoCrm(
   }
 }
 
+
+/**
+ * O texto da casa (`organizations.settings.aviso_de_handoff`), ou `null` para a
+ * frase padrão. Leitura que falha também é `null`: nunca o silêncio.
+ */
+async function avisoPersonalizado(
+  admin: SupabaseClient,
+  organizationId: string,
+): Promise<string[] | null> {
+  try {
+    const { data, error } = await admin
+      .from("organizations")
+      .select("settings")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    return avisoPersonalizadoDaOrg((data as { settings?: unknown } | null)?.settings ?? null);
+  } catch (err) {
+    logger.warn("[handoff-orchestrator] texto da org não lido — aviso padrão", {
+      organization_id: organizationId,
+      error: err instanceof Error ? err.message.slice(0, 200) : String(err),
+    });
+    return null;
+  }
+}
 
 /**
  * Quantos podem assumir agora, no vocabulário que o texto espera.

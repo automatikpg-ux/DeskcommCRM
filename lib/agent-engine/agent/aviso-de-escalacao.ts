@@ -40,7 +40,11 @@ import type pg from 'pg';
 
 import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import { deriveLgpdFromContact } from '../guardrails/lgpd/legal-basis';
-import { textoDoAviso, type MotivoDoAviso } from '@/lib/escalacao/aviso-ao-lead';
+import {
+  avisoPersonalizadoDaOrg,
+  textoDoAviso,
+  type MotivoDoAviso,
+} from '@/lib/escalacao/aviso-ao-lead';
 // Dois `MotivoDoAviso` no repositório, e eles respondem perguntas DIFERENTES: o
 // de cima é "que frase o cliente lê"; este é "por que o cliente NÃO leu nada".
 // O apelido existe para que ninguém os confunda numa leitura rápida.
@@ -117,17 +121,31 @@ export async function avisarLeadDaEscalacao(
   ids: AvisoDeEscalacaoIds,
   opts: AvisoDeEscalacaoOpts,
 ): Promise<DesfechoDoAviso> {
+  let personalizado: string[] | null = null;
+  try {
+    const { rows } = await pool.query<{ settings: unknown }>(
+      'select settings from organizations where id = $1',
+      [ids.tenantId],
+    );
+    personalizado = avisoPersonalizadoDaOrg(rows[0]?.settings ?? null);
+  } catch (err) {
+    // Sem a leitura, a frase padrão — nunca a ausência de frase.
+    opts.log.warn('aviso de escalação: texto da org não lido, usando o padrão', {
+      error: err instanceof Error ? err.message.slice(0, 120) : 'erro desconhecido',
+    });
+  }
+
   let body: string;
   try {
     const { quem } = await expectativaDeAtendimento(pool, ids.tenantId, opts.now);
-    body = textoDoAviso(opts.motivo, quem, ids.leadId);
+    body = textoDoAviso(opts.motivo, quem, ids.leadId, personalizado);
   } catch (err) {
     // `expectativaDeAtendimento` já tem rede própria; se ainda assim quebrar,
     // a frase conservadora (sem prazo) é a certa — nunca a ausência de frase.
     opts.log.warn('aviso de escalação: disponibilidade não lida, usando a frase conservadora', {
       error: err instanceof Error ? err.message.slice(0, 120) : 'erro desconhecido',
     });
-    body = textoDoAviso(opts.motivo, null, ids.leadId);
+    body = textoDoAviso(opts.motivo, null, ids.leadId, personalizado);
   }
 
   try {
