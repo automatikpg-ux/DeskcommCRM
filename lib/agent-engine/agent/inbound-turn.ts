@@ -35,6 +35,8 @@ import { currentExecutionBoundary, guardServiceEffect } from '@/lib/atendimento/
  * main.ts não completa nem re-tenta). PII nunca entra em log/erro de job.
  */
 import type pg from 'pg';
+
+import { inboundJaRespondido } from './ja-respondido';
 import { z } from 'zod';
 import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
 import type { ChannelAdapter, ChannelSendResult } from '../channel-adapter';
@@ -4631,6 +4633,23 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
       return;
     }
     if (operationAgent?.pausedAt) return;
+    // Rajada que escapou da coalescência: um turno anterior já leu esta mensagem
+    // e respondeu. Sem esta guarda o cliente recebe a mesma resposta duas vezes.
+    // Ver ./ja-respondido.ts.
+    if (
+      job.attempts <= 1 &&
+      (await inboundJaRespondido(pool, {
+        organizationId: job.organization_id,
+        conversationId: payload.conversation_id,
+      }))
+    ) {
+      deps.log.info('turno pulado — mensagem já respondida por turno anterior', {
+        job_id: job.id,
+        conversation_id: payload.conversation_id,
+        inbound_message_id: payload.inbound_message_id,
+      });
+      return;
+    }
     await runAgentTurn(deps, job, pool, ctx, {
       resolvedAgent,
       channelSessionId: payload.channel_session_id,
