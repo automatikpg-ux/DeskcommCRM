@@ -1399,6 +1399,43 @@ export function parseCheckpointText(text: string): CheckpointContent {
 }
 
 /**
+ * Quantas vezes o FECHAMENTO é pedido ao modelo antes de desistir do turno.
+ *
+ * O checkpoint sai depois de a resposta já ter ido ao cliente. Quando o modelo
+ * devolvia JSON malformado, o erro derrubava o job e a fila refazia o turno
+ * INTEIRO — a conversa toda de novo no modelo (custo em dobro) e um segundo
+ * texto que o ledger só segura quando o número de envios coincide: se a
+ * re-geração decidisse mandar uma mensagem a mais, ela saía. Medido em
+ * 06/10/2026: ~1% dos turnos de produção (10 em ~880, 14 dias); na prévia do
+ * gpt-5.6-luna, 2 em 13. Repetir só o fechamento custa uma chamada curta e não
+ * toca no que já foi enviado.
+ */
+export const TENTATIVAS_DO_FECHAMENTO = 3;
+
+/**
+ * Pede o fechamento até `tentativas` vezes, re-tentando SÓ quando o texto não é
+ * um checkpoint válido. Falha da própria chamada (rede, provedor, orçamento)
+ * propaga na hora — re-tentá-la aqui esconderia do job o que a fila já trata.
+ * Esgotadas as tentativas, lança o erro do último parse (o job re-tenta, como
+ * antes).
+ */
+export async function fecharComRetentativa(
+  pedirFechamento: () => Promise<string>,
+  aoRecusar: (tentativa: number, motivo: string) => void = () => {},
+  tentativas: number = TENTATIVAS_DO_FECHAMENTO,
+): Promise<CheckpointContent> {
+  for (let tentativa = 1; ; tentativa++) {
+    const texto = await pedirFechamento();
+    try {
+      return parseCheckpointText(texto);
+    } catch (err) {
+      if (tentativa >= tentativas) throw err;
+      aoRecusar(tentativa, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+/**
  * Blocos do ritual de abertura (pt-br: é a língua do agente), compartilhados entre
  * o turno inbound e o follow-up (F3-03) — checkpoint + resumo + estado do funil +
  * contexto curado. Só o CABEÇALHO e o RODAPÉ mudam entre os dois tipos de turno.
@@ -4185,39 +4222,51 @@ async function executarTurnoDoAgente(
     // turno. Aqui o lead já recebeu resposta, mas a conversa ficaria sem
     // checkpoint e sem dono, e o próximo inbound cairia no mesmo bloqueio, agora
     // sem nada tendo mudado no meio.
-    const closing = await runModelCall(
-      pool,
-      deps.llmCfg,
-      {
-        tenantId,
-        leadId: leadId || null,
-        jobId: job?.id,
-        purpose: 'checkpoint',
-        ...(agentConfig !== null
-          ? {
-              model: agentConfig.model,
-              llmOverride: {
-                provider: agentConfig.provider,
-                credentialId: agentConfig.credentialId,
-              },
-            }
-          : {}),
-        system,
-        messages: [
-          // prune: o checkpoint reusa a abertura só como texto — a mídia nativa (cara) já
-          // fez seu trabalho na 1ª chamada e não precisa ir de novo.
-          ...openingTextOnly,
-          ...responseMessages,
-          { role: 'user', content: CHECKPOINT_INSTRUCTION },
-        ],
+    // JSON malformado repete SÓ esta chamada (ver `fecharComRetentativa`), em vez
+    // de derrubar o job e refazer o turno que já respondeu ao cliente. O id é o
+    // da ÚLTIMA chamada — a que produziu o checkpoint aceito.
+    let closingCallId: string | null = null;
+    const content = await fecharComRetentativa(
+      async () => {
+        const closing = await runModelCall(
+          pool,
+          deps.llmCfg,
+          {
+            tenantId,
+            leadId: leadId || null,
+            jobId: job?.id,
+            purpose: 'checkpoint',
+            ...(agentConfig !== null
+              ? {
+                  model: agentConfig.model,
+                  llmOverride: {
+                    provider: agentConfig.provider,
+                    credentialId: agentConfig.credentialId,
+                  },
+                }
+              : {}),
+            system,
+            messages: [
+              // prune: o checkpoint reusa a abertura só como texto — a mídia nativa (cara) já
+              // fez seu trabalho na 1ª chamada e não precisa ir de novo.
+              ...openingTextOnly,
+              ...responseMessages,
+              { role: 'user', content: CHECKPOINT_INSTRUCTION },
+            ],
+          },
+          { registry: deps.registry, log: runLog },
+        );
+        closingCallId = closing.callId;
+        return closing.result.text.replace(
+          /https:\/\/meet\.google\.com\/[a-zA-Z0-9-]+/g,
+          '[link da reunião disponível na Agenda]',
+        );
       },
-      { registry: deps.registry, log: runLog },
-    );
-    const content = parseCheckpointText(
-      closing.result.text.replace(
-        /https:\/\/meet\.google\.com\/[a-zA-Z0-9-]+/g,
-        '[link da reunião disponível na Agenda]',
-      ),
+      (tentativa, motivo) =>
+        runLog.warn('fechamento do turno recusado — pedindo de novo só o checkpoint', {
+          tentativa,
+          motivo,
+        }),
     );
 
     if (preview) {
@@ -4342,7 +4391,7 @@ async function executarTurnoDoAgente(
           // O lastro é a chamada de modelo que PRODUZIU este checkpoint
           // (llm_calls.id). Sem ele a linha entraria como 'system' e perderia a
           // autoria justamente no evento mais "de IA" que existe.
-          ...(closing.callId ? { evidence: { llm_call_ids: [closing.callId] } } : {}),
+          ...(closingCallId ? { evidence: { llm_call_ids: [closingCallId] } } : {}),
           ...(agentConfig?.agentId ? { agentId: agentConfig.agentId } : {}),
           reason: mudanca.reason,
           payload: {
