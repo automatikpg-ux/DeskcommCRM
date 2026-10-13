@@ -29,6 +29,12 @@ vi.mock('@/lib/agent-engine/pacing/engine', () => ({ janelaDeEnvioAberta: () => 
 vi.mock('@/lib/agent-engine/pacing/aviso-de-janela', () => ({
   resolverAvisoDeJanela: vi.fn(async () => 0), avisarJanelaFechada: vi.fn(),
 }));
+// A guarda "uma resposta por mensagem" tem consulta própria (4 parâmetros) e não pesa na seleção
+// testada aqui — mesmo mock da versão oficial deste teste.
+vi.mock('@/lib/agent-engine/agent/turno-ja-respondido', () => ({
+  ultimaInboundJaRespondida: vi.fn(async () => false),
+  anotarUltimaInboundVista: vi.fn(async () => {}),
+}));
 
 import { createInboundTurnHandler, type InboundTurnDeps } from '@/lib/agent-engine/agent/inbound-turn';
 
